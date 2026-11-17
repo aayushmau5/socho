@@ -231,7 +231,7 @@ defmodule SochoWeb.StudyLive.BuilderComponents do
           <div class="flex justify-between items-center">
             <span class="text-xs font-medium opacity-60">Item {idx + 1}</span>
             <button
-              class="btn btn-xs btn-ghost text-error"
+              class="size-5 shrink-0 flex items-center justify-center text-xs border border-base-content/25 bg-base-200 text-base-content/50 hover:bg-base-content hover:text-base-100 hover:border-base-content rounded transition-colors cursor-pointer"
               phx-click="remove_item"
               phx-value-param={@param}
               phx-value-index={idx}
@@ -541,7 +541,7 @@ defmodule SochoWeb.StudyLive.BuilderComponents do
                 <span class="text-xs font-medium opacity-50">Pair {idx + 1}</span>
                 <button
                   type="button"
-                  class="btn btn-xs btn-ghost text-error"
+                  class="size-5 shrink-0 flex items-center justify-center text-xs border border-base-content/25 bg-base-200 text-base-content/50 hover:bg-base-content hover:text-base-100 hover:border-base-content rounded transition-colors cursor-pointer"
                   phx-click="template_var_pair_remove"
                   phx-value-key={@var.key}
                   phx-value-index={idx}
@@ -601,7 +601,7 @@ defmodule SochoWeb.StudyLive.BuilderComponents do
                 <input type="hidden" name={"vars[#{@var.key}][#{idx}]"} value={item} />
                 <button
                   type="button"
-                  class="btn btn-xs btn-ghost text-error shrink-0"
+                  class="size-5 shrink-0 flex items-center justify-center text-xs border border-base-content/25 bg-base-200 text-base-content/50 hover:bg-base-content hover:text-base-100 hover:border-base-content rounded transition-colors cursor-pointer"
                   phx-click="template_var_list_remove"
                   phx-value-key={@var.key}
                   phx-value-index={idx}
@@ -618,7 +618,7 @@ defmodule SochoWeb.StudyLive.BuilderComponents do
                 />
                 <button
                   type="button"
-                  class="btn btn-xs btn-ghost text-error shrink-0"
+                  class="size-5 shrink-0 flex items-center justify-center text-xs border border-base-content/25 bg-base-200 text-base-content/50 hover:bg-base-content hover:text-base-100 hover:border-base-content rounded transition-colors cursor-pointer"
                   phx-click="template_var_list_remove"
                   phx-value-key={@var.key}
                   phx-value-index={idx}
