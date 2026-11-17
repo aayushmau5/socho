@@ -12,29 +12,29 @@ defmodule Socho.Studies.Templates.Iat do
         %{
           key: "cat1_images",
           label: "Category 1 stimuli (one image URL or word per line)",
-          type: :text,
-          default: "https://example.com/cat1_1.jpg\nhttps://example.com/cat1_2.jpg"
+          type: :list,
+          default: ["https://example.com/cat1_1.jpg", "https://example.com/cat1_2.jpg"]
         },
         %{key: "cat2_label", label: "Category 2 label", type: :text, default: "Category B"},
         %{
           key: "cat2_images",
           label: "Category 2 stimuli (one image URL or word per line)",
-          type: :text,
-          default: "https://example.com/cat2_1.jpg\nhttps://example.com/cat2_2.jpg"
+          type: :list,
+          default: ["https://example.com/cat2_1.jpg", "https://example.com/cat2_2.jpg"]
         },
         %{key: "att1_label", label: "Attribute 1 label", type: :text, default: "Pleasant"},
         %{
           key: "att1_images",
           label: "Attribute 1 stimuli (one image URL or word per line)",
-          type: :text,
-          default: "Pleasant\nJoyful\nHappy"
+          type: :list,
+          default: ["Pleasant", "Joyful", "Happy"]
         },
         %{key: "att2_label", label: "Attribute 2 label", type: :text, default: "Unpleasant"},
         %{
           key: "att2_images",
           label: "Attribute 2 stimuli (one image URL or word per line)",
-          type: :text,
-          default: "Unpleasant\nSad\nAngry"
+          type: :list,
+          default: ["Unpleasant", "Sad", "Angry"]
         },
         %{
           key: "instructions_html",
@@ -51,20 +51,23 @@ defmodule Socho.Studies.Templates.Iat do
         att2_label = Map.get(vars, "att2_label", "Unpleasant")
         instructions = Map.get(vars, "instructions_html", "")
 
-        parse_lines = fn text ->
-          text
-          |> String.split("\n")
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
+        to_list = fn val ->
+          cond do
+            is_list(val) -> Enum.reject(val, &(&1 == ""))
+            is_binary(val) -> val |> String.split("\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+            true -> []
+          end
         end
 
-        cat1_images = parse_lines.(Map.get(vars, "cat1_images", ""))
-        cat2_images = parse_lines.(Map.get(vars, "cat2_images", ""))
-        att1_images = parse_lines.(Map.get(vars, "att1_images", ""))
-        att2_images = parse_lines.(Map.get(vars, "att2_images", ""))
+        cat1_images = to_list.(Map.get(vars, "cat1_images", []))
+        cat2_images = to_list.(Map.get(vars, "cat2_images", []))
+        att1_images = to_list.(Map.get(vars, "att1_images", []))
+        att2_images = to_list.(Map.get(vars, "att2_images", []))
 
         is_url = fn item ->
-          String.starts_with?(item, "http://") or String.starts_with?(item, "https://")
+          String.starts_with?(item, "http://") or
+            String.starts_with?(item, "https://") or
+            String.starts_with?(item, "/uploads/")
         end
 
         to_stimulus = fn item ->

@@ -16,24 +16,34 @@ defmodule SochoWeb.StudyLive.Builder do
     registry = Registry.all()
     plugin_names = registry |> Map.keys() |> Enum.sort()
 
-    {:ok,
-     assign(socket,
-       registry: registry,
-       plugin_names: plugin_names,
-       plugin_search: "",
-       filtered_plugins: plugin_names,
-       study_id: nil,
-       study_title: "",
-       study_client_id: nil,
-       clients: Clients.list_clients(),
-       trials: [],
-       selected_trial_id: nil,
-       show_preview: false,
-       preview_key: 0,
-       sidebar_tab: :blocks,
-       templates: Templates.all(),
-       template_group_key: 0
-     )}
+    socket =
+      socket
+      |> assign(
+        registry: registry,
+        plugin_names: plugin_names,
+        plugin_search: "",
+        filtered_plugins: plugin_names,
+        study_id: nil,
+        study_title: "",
+        study_client_id: nil,
+        clients: Clients.list_clients(),
+        trials: [],
+        selected_trial_id: nil,
+        show_preview: false,
+        preview_key: 0,
+        sidebar_tab: :blocks,
+        templates: Templates.all(),
+        template_group_key: 0,
+        upload_modal_open: false,
+        upload_modal_var_key: nil
+      )
+      |> allow_upload(:template_file,
+        accept: ~w(.jpg .jpeg .png .gif .webp .svg .mp4 .wav .mp3),
+        max_entries: 1,
+        max_file_size: 20_000_000
+      )
+
+    {:ok, socket}
   end
 
   @impl true
@@ -433,6 +443,66 @@ defmodule SochoWeb.StudyLive.Builder do
       {:noreply, assign(socket, trials: trials)}
     else
       _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("open_upload_modal", %{"key" => key}, socket) do
+    {:noreply, assign(socket, upload_modal_open: true, upload_modal_var_key: key)}
+  end
+
+  def handle_event("close_upload_modal", _params, socket) do
+    {:noreply, assign(socket, upload_modal_open: false, upload_modal_var_key: nil)}
+  end
+
+  def handle_event("validate_template_file", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("cancel_file_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :template_file, ref)}
+  end
+
+  def handle_event("use_uploaded_file", _params, socket) do
+    key = socket.assigns.upload_modal_var_key
+
+    uploaded_files =
+      consume_uploaded_entries(socket, :template_file, fn %{path: tmp_path}, entry ->
+        filename = "#{System.unique_integer([:positive])}_#{entry.client_name}"
+        dest = Path.join([:code.priv_dir(:socho), "static", "uploads", filename])
+        File.cp!(tmp_path, dest)
+        {:ok, "/uploads/#{filename}"}
+      end)
+
+    case uploaded_files do
+      [url] ->
+        with id when not is_nil(id) <- socket.assigns.selected_trial_id,
+             %{node_type: "template_group"} = node <- find_node(socket.assigns.trials, id) do
+          tpl = Templates.get(node.config["template_id"])
+          vars = node.config["vars"] || %{}
+          new_vars = Map.update(vars, key, [url], &(&1 ++ [url]))
+          children = tpl.build.(new_vars) |> stamp_ids()
+          new_config = %{
+            "template_id" => node.config["template_id"],
+            "template_name" => node.config["template_name"],
+            "vars" => new_vars
+          }
+          trials =
+            socket.assigns.trials
+            |> update_node_config(id, new_config)
+            |> update_node_children(id, children)
+
+          {:noreply,
+           assign(socket,
+             trials: trials,
+             upload_modal_open: false,
+             upload_modal_var_key: nil
+           )}
+        else
+          _ -> {:noreply, assign(socket, upload_modal_open: false, upload_modal_var_key: nil)}
+        end
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -908,29 +978,52 @@ defmodule SochoWeb.StudyLive.Builder do
                         <% items = Map.get(current_vars, var.key, var.default) |> ensure_list() %>
                         <div class="space-y-1 mt-1">
                           <%= for {item, idx} <- Enum.with_index(items) do %>
-                            <div class="flex items-center gap-2">
-                              <input
-                                type="text"
-                                class="input input-bordered input-sm flex-1"
-                                name={"vars[#{var.key}][#{idx}]"}
-                                value={item}
-                                phx-debounce="300"
-                              />
-                              <button
-                                type="button"
-                                class="btn btn-xs btn-ghost text-error shrink-0"
-                                phx-click="template_var_list_remove"
-                                phx-value-key={var.key}
-                                phx-value-index={idx}
-                              >✕</button>
-                            </div>
+                            <%= if String.starts_with?(item, "/uploads/") do %>
+                              <div class="flex items-center gap-2 bg-base-200 rounded px-2 py-1">
+                                <.icon name="hero-paper-clip" class="size-3 opacity-50 shrink-0" />
+                                <span class="text-sm flex-1 truncate">{Path.basename(item)}</span>
+                                <input type="hidden" name={"vars[#{var.key}][#{idx}]"} value={item} />
+                                <button
+                                  type="button"
+                                  class="btn btn-xs btn-ghost text-error shrink-0"
+                                  phx-click="template_var_list_remove"
+                                  phx-value-key={var.key}
+                                  phx-value-index={idx}
+                                >✕</button>
+                              </div>
+                            <% else %>
+                              <div class="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  class="input input-bordered input-sm flex-1"
+                                  name={"vars[#{var.key}][#{idx}]"}
+                                  value={item}
+                                  phx-debounce="300"
+                                />
+                                <button
+                                  type="button"
+                                  class="btn btn-xs btn-ghost text-error shrink-0"
+                                  phx-click="template_var_list_remove"
+                                  phx-value-key={var.key}
+                                  phx-value-index={idx}
+                                >✕</button>
+                              </div>
+                            <% end %>
                           <% end %>
-                          <button
-                            type="button"
-                            class="btn btn-xs btn-outline w-full"
-                            phx-click="template_var_list_add"
-                            phx-value-key={var.key}
-                          >+ Add</button>
+                          <div class="flex gap-1 mt-1">
+                            <button
+                              type="button"
+                              class="btn btn-xs btn-outline flex-1"
+                              phx-click="template_var_list_add"
+                              phx-value-key={var.key}
+                            >+ Add URL</button>
+                            <button
+                              type="button"
+                              class="btn btn-xs btn-outline flex-1"
+                              phx-click="open_upload_modal"
+                              phx-value-key={var.key}
+                            >↑ Upload</button>
+                          </div>
                         </div>
                       <% else %>
                         <p class="text-xs opacity-40 mt-0.5 mb-1">
@@ -1246,9 +1339,73 @@ defmodule SochoWeb.StudyLive.Builder do
 
       </div>
     </div>
+    <%!-- File Upload Modal --%>
+    <div :if={@upload_modal_open} class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-4">Upload File</h3>
+        <form
+          id="file-upload-form"
+          phx-change="validate_template_file"
+          phx-submit="use_uploaded_file"
+        >
+          <div
+            class="border-2 border-dashed border-base-300 rounded-lg p-8 text-center hover:border-primary transition-colors"
+            phx-drop-target={@uploads.template_file.ref}
+          >
+            <.live_file_input upload={@uploads.template_file} class="hidden" />
+            <div :if={@uploads.template_file.entries == []}>
+              <p class="text-sm opacity-50 mb-3">Drag &amp; drop a file here, or</p>
+              <label
+                for={@uploads.template_file.ref}
+                class="btn btn-sm btn-outline cursor-pointer"
+              >
+                Browse Files
+              </label>
+            </div>
+            <%= for entry <- @uploads.template_file.entries do %>
+              <div class="flex items-center gap-3 justify-center">
+                <.icon name="hero-paper-clip" class="size-5" />
+                <span class="font-medium text-sm">{entry.client_name}</span>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-ghost text-error"
+                  phx-click="cancel_file_upload"
+                  phx-value-ref={entry.ref}
+                >✕</button>
+              </div>
+              <div class="mt-3">
+                <progress class="progress w-full" value={entry.progress} max="100" />
+              </div>
+              <%= for err <- upload_errors(@uploads.template_file, entry) do %>
+                <p class="text-error text-xs mt-1">{upload_error_to_string(err)}</p>
+              <% end %>
+            <% end %>
+          </div>
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" phx-click="close_upload_modal">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              disabled={@uploads.template_file.entries == []}
+            >
+              Use this
+            </button>
+          </div>
+        </form>
+      </div>
+      <div class="modal-backdrop" phx-click="close_upload_modal"></div>
+    </div>
+
     </Layouts.app>
 
 
     """
   end
+
+  defp upload_error_to_string(:too_large), do: "File too large (max 20 MB)"
+  defp upload_error_to_string(:not_accepted), do: "File type not accepted"
+  defp upload_error_to_string(:too_many_files), do: "Upload one file at a time"
+  defp upload_error_to_string(_), do: "Upload error"
 end
