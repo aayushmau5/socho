@@ -8,34 +8,14 @@ defmodule Socho.Studies.Templates.Iat do
       description:
         "7-block IAT measuring implicit associations between two categories and two attributes using image stimuli.",
       variables: [
-        %{key: "cat1_label", label: "Category 1 label", type: :text, default: "Category A"},
-        %{
-          key: "cat1_images",
-          label: "Category 1 stimuli (one image URL or word per line)",
-          type: :list,
-          default: ["https://example.com/cat1_1.jpg", "https://example.com/cat1_2.jpg"]
-        },
-        %{key: "cat2_label", label: "Category 2 label", type: :text, default: "Category B"},
-        %{
-          key: "cat2_images",
-          label: "Category 2 stimuli (one image URL or word per line)",
-          type: :list,
-          default: ["https://example.com/cat2_1.jpg", "https://example.com/cat2_2.jpg"]
-        },
-        %{key: "att1_label", label: "Attribute 1 label", type: :text, default: "Pleasant"},
-        %{
-          key: "att1_images",
-          label: "Attribute 1 stimuli (one image URL or word per line)",
-          type: :list,
-          default: ["Pleasant", "Joyful", "Happy"]
-        },
-        %{key: "att2_label", label: "Attribute 2 label", type: :text, default: "Unpleasant"},
-        %{
-          key: "att2_images",
-          label: "Attribute 2 stimuli (one image URL or word per line)",
-          type: :list,
-          default: ["Unpleasant", "Sad", "Angry"]
-        },
+        %{key: "cat1_label", label: "Label", type: :string, group: "Categories", section: "Category 1", default: "Category A"},
+        %{key: "cat1_images", label: "Stimuli", type: :list, group: "Categories", section: "Category 1", default: ["https://example.com/cat1_1.jpg", "https://example.com/cat1_2.jpg"]},
+        %{key: "cat2_label", label: "Label", type: :string, group: "Categories", section: "Category 2", default: "Category B"},
+        %{key: "cat2_images", label: "Stimuli", type: :list, group: "Categories", section: "Category 2", default: ["https://example.com/cat2_1.jpg", "https://example.com/cat2_2.jpg"]},
+        %{key: "att1_label", label: "Label", type: :string, group: "Attributes", section: "Attribute 1", default: "Pleasant"},
+        %{key: "att1_images", label: "Stimuli", type: :list, group: "Attributes", section: "Attribute 1", default: ["Pleasant", "Joyful", "Happy"]},
+        %{key: "att2_label", label: "Label", type: :string, group: "Attributes", section: "Attribute 2", default: "Unpleasant"},
+        %{key: "att2_images", label: "Stimuli", type: :list, group: "Attributes", section: "Attribute 2", default: ["Unpleasant", "Sad", "Angry"]},
         %{
           key: "instructions_html",
           label: "General instructions",

@@ -661,10 +661,6 @@ defmodule SochoWeb.StudyLive.Builder do
     end)
   end
 
-  defp ensure_list(nil), do: []
-  defp ensure_list(list) when is_list(list), do: list
-  defp ensure_list(_), do: []
-
   defp coerce_template_vars(raw_vars, var_defs) do
     Map.new(raw_vars, fn {key, val} ->
       var_def = Enum.find(var_defs, fn v -> v.key == key end)
@@ -694,9 +690,18 @@ defmodule SochoWeb.StudyLive.Builder do
     end)
   end
 
-  defp ensure_pair([a, b]), do: [a, b]
-  defp ensure_pair([a]), do: [a, ""]
-  defp ensure_pair(_), do: ["", ""]
+  defp group_template_vars(variables) do
+    variables
+    |> Enum.chunk_by(& &1[:group])
+    |> Enum.map(fn group_vars ->
+      group = hd(group_vars)[:group]
+      sections =
+        group_vars
+        |> Enum.chunk_by(& &1[:section])
+        |> Enum.map(fn section_vars -> {hd(section_vars)[:section], section_vars} end)
+      {group, sections}
+    end)
+  end
 
   defp sorted_params(parameters) do
     Enum.sort_by(parameters, fn {_, spec} ->
@@ -911,141 +916,44 @@ defmodule SochoWeb.StudyLive.Builder do
               <form
                 phx-change="template_vars_changed"
                 id={"template-vars-form-#{@template_group_key}"}
-                class="space-y-5"
+                class="space-y-4"
               >
-                <%= for var <- (@selected_template && @selected_template.variables) || [] do %>
-                  <% current_vars = @selected_trial.config["vars"] || %{} %>
-                  <div class="form-control">
-                    <p class="text-sm font-medium leading-tight">{var.label}</p>
-                    <%= if var.type == :pair_list do %>
-                      <% pairs = Map.get(current_vars, var.key, var.default) |> ensure_list() %>
-                      <div class="space-y-2 mt-1">
-                        <%= for {pair, idx} <- Enum.with_index(pairs) do %>
-                          <% [img_a, img_b] = ensure_pair(pair) %>
-                          <div class="border border-base-300 rounded p-2 space-y-1">
-                            <div class="flex items-center justify-between mb-1">
-                              <span class="text-xs font-medium opacity-50">Pair {idx + 1}</span>
-                              <button
-                                type="button"
-                                class="btn btn-xs btn-ghost text-error"
-                                phx-click="template_var_pair_remove"
-                                phx-value-key={var.key}
-                                phx-value-index={idx}
-                              >✕</button>
-                            </div>
-                            <input
-                              type="text"
-                              class="input input-bordered input-sm w-full"
-                              name={"vars[#{var.key}][#{idx}][0]"}
-                              value={img_a}
-                              placeholder="Image A URL"
-                              phx-debounce="300"
-                            />
-                            <input
-                              type="text"
-                              class="input input-bordered input-sm w-full"
-                              name={"vars[#{var.key}][#{idx}][1]"}
-                              value={img_b}
-                              placeholder="Image B URL"
-                              phx-debounce="300"
-                            />
-                          </div>
-                        <% end %>
-                        <button
-                          type="button"
-                          class="btn btn-xs btn-outline w-full"
-                          phx-click="template_var_pair_add"
-                          phx-value-key={var.key}
-                        >+ Add Pair</button>
-                      </div>
-                    <% else %>
-                      <%= if var.type == :boolean do %>
-                        <div class="flex items-center gap-2 mt-1">
-                          <input type="hidden" name={"vars[#{var.key}]"} value="false" />
-                          <input
-                            type="checkbox"
-                            id={"tvar-#{@template_group_key}-#{var.key}"}
-                            class="checkbox checkbox-sm"
-                            name={"vars[#{var.key}]"}
-                            value="true"
-                            checked={Map.get(current_vars, var.key, var.default) == true}
-                          />
-                        </div>
-                      <% else %>
-                      <%= if var.type == :list do %>
-                        <% items = Map.get(current_vars, var.key, var.default) |> ensure_list() %>
-                        <div class="space-y-1 mt-1">
-                          <%= for {item, idx} <- Enum.with_index(items) do %>
-                            <%= if String.starts_with?(item, "/uploads/") or String.starts_with?(item, "s3:") do %>
-                              <div class="flex items-center gap-2 bg-base-200 rounded px-2 py-1">
-                                <.icon name="hero-paper-clip" class="size-3 opacity-50 shrink-0" />
-                                <span class="text-sm flex-1 truncate">{Path.basename(item)}</span>
-                                <input type="hidden" name={"vars[#{var.key}][#{idx}]"} value={item} />
-                                <button
-                                  type="button"
-                                  class="btn btn-xs btn-ghost text-error shrink-0"
-                                  phx-click="template_var_list_remove"
-                                  phx-value-key={var.key}
-                                  phx-value-index={idx}
-                                >✕</button>
-                              </div>
-                            <% else %>
-                              <div class="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  class="input input-bordered input-sm flex-1"
-                                  name={"vars[#{var.key}][#{idx}]"}
-                                  value={item}
-                                  phx-debounce="300"
-                                />
-                                <button
-                                  type="button"
-                                  class="btn btn-xs btn-ghost text-error shrink-0"
-                                  phx-click="template_var_list_remove"
-                                  phx-value-key={var.key}
-                                  phx-value-index={idx}
-                                >✕</button>
-                              </div>
-                            <% end %>
-                          <% end %>
-                          <div class="flex gap-1 mt-1">
-                            <button
-                              type="button"
-                              class="btn btn-xs btn-outline flex-1"
-                              phx-click="template_var_list_add"
-                              phx-value-key={var.key}
-                            >+ Add URL</button>
-                            <button
-                              type="button"
-                              class="btn btn-xs btn-outline flex-1"
-                              phx-click="open_upload_modal"
-                              phx-value-key={var.key}
-                            >↑ Upload</button>
-                          </div>
-                        </div>
-                      <% else %>
-                        <p class="text-xs opacity-40 mt-0.5 mb-1">
-                          {if var.type == :int, do: "INT", else: "TEXT"}
-                        </p>
-                        <textarea
-                          :if={var.type == :text}
-                          id={"tvar-#{@template_group_key}-#{var.key}"}
-                          class="textarea textarea-bordered textarea-sm text-xs font-mono leading-snug w-full"
-                          name={"vars[#{var.key}]"}
-                          rows="4"
-                        >{Map.get(current_vars, var.key, var.default)}</textarea>
-                        <input
-                          :if={var.type == :int}
-                          id={"tvar-#{@template_group_key}-#{var.key}"}
-                          type="number"
-                          class="input input-bordered input-sm w-full"
-                          name={"vars[#{var.key}]"}
-                          value={Map.get(current_vars, var.key, var.default)}
-                          step="1"
-                        />
-                      <% end %>
-                      <% end %>
+                <% current_vars = @selected_trial.config["vars"] || %{} %>
+                <% all_vars = (@selected_template && @selected_template.variables) || [] %>
+                <%= for {group, sections} <- group_template_vars(all_vars) do %>
+                  <div class={if group, do: "space-y-2", else: "space-y-4"}>
+                    <%= if group do %>
+                      <p class="text-xs font-bold uppercase tracking-wider opacity-70 pt-1">{group}</p>
                     <% end %>
+                    <div class={if group, do: "space-y-2", else: "space-y-4"}>
+                      <%= for {section, vars} <- sections do %>
+                        <%= if section do %>
+                          <div class="rounded-lg border border-base-300 overflow-hidden">
+                            <div class="bg-base-300 px-3 py-1.5">
+                              <p class="text-xs font-semibold opacity-60">{section}</p>
+                            </div>
+                            <div class="px-3 pt-2 pb-3 space-y-3">
+                              <%= for var <- vars do %>
+                                <.template_var_field
+                                  var={var}
+                                  current_vars={current_vars}
+                                  group_key={@template_group_key}
+                                  compact={true}
+                                />
+                              <% end %>
+                            </div>
+                          </div>
+                        <% else %>
+                          <%= for var <- vars do %>
+                            <.template_var_field
+                              var={var}
+                              current_vars={current_vars}
+                              group_key={@template_group_key}
+                            />
+                          <% end %>
+                        <% end %>
+                      <% end %>
+                    </div>
                   </div>
                 <% end %>
               </form>

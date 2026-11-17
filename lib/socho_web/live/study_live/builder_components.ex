@@ -505,4 +505,181 @@ defmodule SochoWeb.StudyLive.BuilderComponents do
 
     """
   end
+
+  # ── Template variable helpers ─────────────────────────────────────────────
+
+  def ensure_list(nil), do: []
+  def ensure_list(list) when is_list(list), do: list
+  def ensure_list(_), do: []
+
+  def ensure_pair([a, b]), do: [a, b]
+  def ensure_pair([a]), do: [a, ""]
+  def ensure_pair(_), do: ["", ""]
+
+  # ── Template variable field component ─────────────────────────────────────
+
+  attr :var, :map, required: true
+  attr :current_vars, :map, required: true
+  attr :group_key, :integer, required: true
+  attr :compact, :boolean, default: false
+
+  def template_var_field(assigns) do
+    ~H"""
+    <div class="form-control">
+      <p class={if @compact, do: "text-xs opacity-50 mb-0.5", else: "text-sm font-medium leading-tight mb-1"}>
+        {@var.label}
+      </p>
+
+      <%# pair_list %>
+      <%= if @var.type == :pair_list do %>
+        <% pairs = Map.get(@current_vars, @var.key, @var.default) |> ensure_list() %>
+        <div class="space-y-2">
+          <%= for {pair, idx} <- Enum.with_index(pairs) do %>
+            <% [img_a, img_b] = ensure_pair(pair) %>
+            <div class="border border-base-300 rounded p-2 space-y-1">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-medium opacity-50">Pair {idx + 1}</span>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-ghost text-error"
+                  phx-click="template_var_pair_remove"
+                  phx-value-key={@var.key}
+                  phx-value-index={idx}
+                >✕</button>
+              </div>
+              <input
+                type="text"
+                class="input input-bordered input-sm w-full"
+                name={"vars[#{@var.key}][#{idx}][0]"}
+                value={img_a}
+                placeholder="Image A URL"
+                phx-debounce="300"
+              />
+              <input
+                type="text"
+                class="input input-bordered input-sm w-full"
+                name={"vars[#{@var.key}][#{idx}][1]"}
+                value={img_b}
+                placeholder="Image B URL"
+                phx-debounce="300"
+              />
+            </div>
+          <% end %>
+          <button
+            type="button"
+            class="btn btn-xs btn-outline w-full"
+            phx-click="template_var_pair_add"
+            phx-value-key={@var.key}
+          >+ Add Pair</button>
+        </div>
+
+      <%# boolean %>
+      <% else %>
+      <%= if @var.type == :boolean do %>
+        <div class="flex items-center gap-2">
+          <input type="hidden" name={"vars[#{@var.key}]"} value="false" />
+          <input
+            type="checkbox"
+            id={"tvar-#{@group_key}-#{@var.key}"}
+            class="checkbox checkbox-sm"
+            name={"vars[#{@var.key}]"}
+            value="true"
+            checked={Map.get(@current_vars, @var.key, @var.default) == true}
+          />
+        </div>
+
+      <%# list %>
+      <% else %>
+      <%= if @var.type == :list do %>
+        <% items = Map.get(@current_vars, @var.key, @var.default) |> ensure_list() %>
+        <div class="space-y-1">
+          <%= for {item, idx} <- Enum.with_index(items) do %>
+            <%= if String.starts_with?(item, "/uploads/") or String.starts_with?(item, "s3:") do %>
+              <div class="flex items-center gap-2 bg-base-200 rounded px-2 py-1">
+                <.icon name="hero-paper-clip" class="size-3 opacity-50 shrink-0" />
+                <span class="text-sm flex-1 truncate">{Path.basename(item)}</span>
+                <input type="hidden" name={"vars[#{@var.key}][#{idx}]"} value={item} />
+                <button
+                  type="button"
+                  class="btn btn-xs btn-ghost text-error shrink-0"
+                  phx-click="template_var_list_remove"
+                  phx-value-key={@var.key}
+                  phx-value-index={idx}
+                >✕</button>
+              </div>
+            <% else %>
+              <div class="flex items-center gap-2">
+                <input
+                  type="text"
+                  class="input input-bordered input-sm flex-1"
+                  name={"vars[#{@var.key}][#{idx}]"}
+                  value={item}
+                  phx-debounce="300"
+                />
+                <button
+                  type="button"
+                  class="btn btn-xs btn-ghost text-error shrink-0"
+                  phx-click="template_var_list_remove"
+                  phx-value-key={@var.key}
+                  phx-value-index={idx}
+                >✕</button>
+              </div>
+            <% end %>
+          <% end %>
+          <div class="flex gap-1 mt-1">
+            <button
+              type="button"
+              class="btn btn-xs btn-outline flex-1"
+              phx-click="template_var_list_add"
+              phx-value-key={@var.key}
+            >+ Add URL</button>
+            <button
+              type="button"
+              class="btn btn-xs btn-outline flex-1"
+              phx-click="open_upload_modal"
+              phx-value-key={@var.key}
+            >↑ Upload</button>
+          </div>
+        </div>
+
+      <%# string — single-line text input %>
+      <% else %>
+      <%= if @var.type == :string do %>
+        <input
+          id={"tvar-#{@group_key}-#{@var.key}"}
+          type="text"
+          class="input input-bordered input-sm w-full"
+          name={"vars[#{@var.key}]"}
+          value={Map.get(@current_vars, @var.key, @var.default)}
+          phx-debounce="300"
+        />
+
+      <%# text / int %>
+      <% else %>
+        <p :if={not @compact} class="text-xs opacity-40 mb-1">
+          {if @var.type == :int, do: "INT", else: "TEXT"}
+        </p>
+        <textarea
+          :if={@var.type == :text}
+          id={"tvar-#{@group_key}-#{@var.key}"}
+          class="textarea textarea-bordered textarea-sm text-xs font-mono leading-snug w-full"
+          name={"vars[#{@var.key}]"}
+          rows="4"
+        >{Map.get(@current_vars, @var.key, @var.default)}</textarea>
+        <input
+          :if={@var.type == :int}
+          id={"tvar-#{@group_key}-#{@var.key}"}
+          type="number"
+          class="input input-bordered input-sm w-full"
+          name={"vars[#{@var.key}]"}
+          value={Map.get(@current_vars, @var.key, @var.default)}
+          step="1"
+        />
+      <% end %>
+      <% end %>
+      <% end %>
+      <% end %>
+    </div>
+    """
+  end
 end
