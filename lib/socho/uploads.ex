@@ -103,7 +103,9 @@ defmodule Socho.Uploads do
 
   defp stamp_ids(nodes) do
     Enum.map(nodes, fn node ->
-      %{node | id: System.unique_integer([:positive]), children: stamp_ids(node.children)}
+      node
+      |> Map.put(:id, System.unique_integer([:positive]))
+      |> Map.update(:children, [], &stamp_ids/1)
     end)
   end
 
