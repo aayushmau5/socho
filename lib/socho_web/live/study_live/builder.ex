@@ -901,7 +901,8 @@ defmodule SochoWeb.StudyLive.Builder do
         </div>
 
         <%!-- Column 2: Config panel --%>
-        <div class="flex flex-col gap-2 border-l border-base-300 pl-4 sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto">
+        <div class="flex flex-col gap-2 border-l border-base-300 pl-4 sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto min-w-0">
+          <div class="w-full max-w-sm flex flex-col gap-2">
           <%= if @selected_trial && @selected_trial.node_type == "template_group" do %>
             <p class="text-xs font-semibold uppercase tracking-wider opacity-50 shrink-0">Configure</p>
             <p class="text-sm font-medium text-accent shrink-0 -mt-1">{@selected_template && @selected_template.name}</p>
@@ -1301,6 +1302,7 @@ defmodule SochoWeb.StudyLive.Builder do
             <% end %>
           <% end %>
           <% end %>
+          </div>
         </div>
 
         <%!-- Column 3: Phone preview --%>
