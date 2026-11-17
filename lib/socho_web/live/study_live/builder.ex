@@ -1390,7 +1390,7 @@ defmodule SochoWeb.StudyLive.Builder do
               class="btn btn-primary"
               disabled={@uploads.template_file.entries == []}
             >
-              Use this
+              Upload and link
             </button>
           </div>
         </form>
