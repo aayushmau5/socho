@@ -40,7 +40,7 @@ defmodule SochoWeb.StudyLive.Builder do
       |> allow_upload(:template_file,
         accept: ~w(.jpg .jpeg .png .gif .webp .svg .mp4 .wav .mp3),
         max_entries: 1,
-        max_file_size: 20_000_000
+        max_file_size: 2_000_000
       )
 
     {:ok, socket}
@@ -1401,7 +1401,7 @@ defmodule SochoWeb.StudyLive.Builder do
     """
   end
 
-  defp upload_error_to_string(:too_large), do: "File too large (max 20 MB)"
+  defp upload_error_to_string(:too_large), do: "File too large (max 2 MB)"
   defp upload_error_to_string(:not_accepted), do: "File type not accepted"
   defp upload_error_to_string(:too_many_files), do: "Upload one file at a time"
   defp upload_error_to_string(_), do: "Upload error"

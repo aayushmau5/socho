@@ -16,6 +16,12 @@ Application.get_env(:socho, :uploads_backend, :local)  # :local | :s3
 
 Switching between backends requires only environment variables — no code changes.
 
+We currently set a file upload limit of 2MB.
+We recommend these offline tools to process image before uploading : 
+1. https://www.useful.cool/image-cropper - This can be used to crop images into fixed aspect ratios
+2. https://www.useful.cool/image-compressor
+3. https://www.useful.cool/image-resizer
+
 ---
 
 ## Technical Implementation
@@ -90,4 +96,6 @@ The upload UI is currently wired into the template variable editor for `:list`-t
 **No content-type enforcement on S3.** The S3 upload does not currently set `Content-Type` metadata on the object. Browsers generally infer type correctly from the file extension, but if you need strict MIME types on responses (e.g., for CORS or CSP rules), pass `content_type: entry.content_type` to `ExAws.S3.upload/3`.
 
 **Single-file uploads only.** `allow_upload` is configured with `max_entries: 1`. The UI opens a fresh modal per stimulus slot, so this is intentional, but the constraint is worth knowing if the upload flow is extended.
+
+**File size limit is 2 MB.** Set via `max_file_size` in the `allow_upload` call in `builder.ex`. Adjust there if the limit needs to change.
 
