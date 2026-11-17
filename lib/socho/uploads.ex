@@ -7,6 +7,7 @@ defmodule Socho.Uploads do
   builder preview time and study serve time, so the stored vars never expire.
   """
 
+  alias Socho.Media
   alias Socho.Studies.Templates
 
   @s3_region "ap-south-2"
@@ -15,12 +16,28 @@ defmodule Socho.Uploads do
   # ── Public API ──────────────────────────────────────────────────────────────
 
   @doc "Upload a file. Returns `{:ok, ref}` where ref is `/uploads/name` or `s3:key`."
-  def upload(tmp_path, client_name, _content_type \\ nil) do
+  def upload(tmp_path, client_name, content_type \\ nil) do
     filename = "#{System.unique_integer([:positive])}_#{client_name}"
+    file_size = File.stat!(tmp_path).size
 
-    case backend() do
-      :local -> upload_local(tmp_path, filename)
-      :s3 -> upload_s3(tmp_path, filename)
+    result =
+      case backend() do
+        :local -> upload_local(tmp_path, filename)
+        :s3 -> upload_s3(tmp_path, filename)
+      end
+
+    case result do
+      {:ok, ref} ->
+        Media.record_upload(%{
+          ref: ref,
+          original_name: client_name,
+          file_size: file_size,
+          content_type: content_type
+        })
+        {:ok, ref}
+
+      error ->
+        error
     end
   end
 

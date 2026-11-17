@@ -35,7 +35,10 @@ defmodule SochoWeb.StudyLive.Builder do
         templates: Templates.all(),
         template_group_key: 0,
         upload_modal_open: false,
-        upload_modal_var_key: nil
+        upload_modal_var_key: nil,
+        upload_modal_tab: :upload,
+        media_library_search: "",
+        media_library_files: []
       )
       |> allow_upload(:template_file,
         accept: ~w(.jpg .jpeg .png .gif .webp .svg .mp4 .wav .mp3),
@@ -447,11 +450,62 @@ defmodule SochoWeb.StudyLive.Builder do
   end
 
   def handle_event("open_upload_modal", %{"key" => key}, socket) do
-    {:noreply, assign(socket, upload_modal_open: true, upload_modal_var_key: key)}
+    {:noreply,
+     assign(socket,
+       upload_modal_open: true,
+       upload_modal_var_key: key,
+       upload_modal_tab: :upload,
+       media_library_search: "",
+       media_library_files: Socho.Media.list_files()
+     )}
   end
 
   def handle_event("close_upload_modal", _params, socket) do
-    {:noreply, assign(socket, upload_modal_open: false, upload_modal_var_key: nil)}
+    {:noreply,
+     assign(socket, upload_modal_open: false, upload_modal_var_key: nil, upload_modal_tab: :upload)}
+  end
+
+  def handle_event("switch_upload_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, upload_modal_tab: String.to_existing_atom(tab))}
+  end
+
+  def handle_event("media_library_search", %{"value" => term}, socket) do
+    {:noreply,
+     assign(socket,
+       media_library_search: term,
+       media_library_files: Socho.Media.list_files(term)
+     )}
+  end
+
+  def handle_event("select_library_file", %{"ref" => ref}, socket) do
+    key = socket.assigns.upload_modal_var_key
+
+    with id when not is_nil(id) <- socket.assigns.selected_trial_id,
+         %{node_type: "template_group"} = node <- find_node(socket.assigns.trials, id) do
+      tpl = Templates.get(node.config["template_id"])
+      vars = node.config["vars"] || %{}
+      new_vars = Map.update(vars, key, [ref], &(&1 ++ [ref]))
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
+      new_config = %{
+        "template_id" => node.config["template_id"],
+        "template_name" => node.config["template_name"],
+        "vars" => new_vars
+      }
+      trials =
+        socket.assigns.trials
+        |> update_node_config(id, new_config)
+        |> update_node_children(id, children)
+
+      {:noreply,
+       assign(socket,
+         trials: trials,
+         upload_modal_open: false,
+         upload_modal_var_key: nil,
+         upload_modal_tab: :upload
+       )}
+    else
+      _ -> {:noreply, assign(socket, upload_modal_open: false, upload_modal_var_key: nil)}
+    end
   end
 
   def handle_event("validate_template_file", _params, socket) do
@@ -1246,61 +1300,126 @@ defmodule SochoWeb.StudyLive.Builder do
 
       </div>
     </div>
-    <%!-- File Upload Modal --%>
+    <%!-- File Upload / Library Modal --%>
     <div :if={@upload_modal_open} class="modal modal-open">
-      <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg mb-4">Upload File</h3>
-        <form
-          id="file-upload-form"
-          phx-change="validate_template_file"
-          phx-submit="use_uploaded_file"
-        >
-          <div
-            class="border-2 border-dashed border-base-300 rounded-lg p-8 text-center hover:border-primary transition-colors"
-            phx-drop-target={@uploads.template_file.ref}
+      <div class="modal-box max-w-lg">
+        <%!-- Tab bar --%>
+        <div role="tablist" class="tabs tabs-bordered mb-4">
+          <button
+            role="tab"
+            type="button"
+            class={["tab", if(@upload_modal_tab == :upload, do: "tab-active")]}
+            phx-click="switch_upload_tab"
+            phx-value-tab="upload"
+          >Upload new</button>
+          <button
+            role="tab"
+            type="button"
+            class={["tab", if(@upload_modal_tab == :library, do: "tab-active")]}
+            phx-click="switch_upload_tab"
+            phx-value-tab="library"
+          >Library</button>
+        </div>
+
+        <%!-- Upload tab --%>
+        <div :if={@upload_modal_tab == :upload}>
+          <form
+            id="file-upload-form"
+            phx-change="validate_template_file"
+            phx-submit="use_uploaded_file"
           >
-            <.live_file_input upload={@uploads.template_file} class="hidden" />
-            <div :if={@uploads.template_file.entries == []}>
-              <p class="text-sm opacity-50 mb-3">Drag &amp; drop a file here, or</p>
-              <label
-                for={@uploads.template_file.ref}
-                class="btn btn-sm btn-outline cursor-pointer"
-              >
-                Browse Files
-              </label>
-            </div>
-            <%= for entry <- @uploads.template_file.entries do %>
-              <div class="flex items-center gap-3 justify-center">
-                <.icon name="hero-paper-clip" class="size-5" />
-                <span class="font-medium text-sm">{entry.client_name}</span>
-                <button
-                  type="button"
-                  class="btn btn-xs btn-ghost text-error"
-                  phx-click="cancel_file_upload"
-                  phx-value-ref={entry.ref}
-                >✕</button>
+            <div
+              class="border-2 border-dashed border-base-300 rounded-lg p-8 text-center hover:border-primary transition-colors"
+              phx-drop-target={@uploads.template_file.ref}
+            >
+              <.live_file_input upload={@uploads.template_file} class="hidden" />
+              <div :if={@uploads.template_file.entries == []}>
+                <p class="text-sm opacity-50 mb-3">Drag &amp; drop a file here, or</p>
+                <label
+                  for={@uploads.template_file.ref}
+                  class="btn btn-sm btn-outline cursor-pointer"
+                >
+                  Browse Files
+                </label>
               </div>
-              <div class="mt-3">
-                <progress class="progress w-full" value={entry.progress} max="100" />
-              </div>
-              <%= for err <- upload_errors(@uploads.template_file, entry) do %>
-                <p class="text-error text-xs mt-1">{upload_error_to_string(err)}</p>
+              <%= for entry <- @uploads.template_file.entries do %>
+                <div class="flex items-center gap-3 justify-center">
+                  <.icon name="hero-paper-clip" class="size-5" />
+                  <span class="font-medium text-sm">{entry.client_name}</span>
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-ghost"
+                    phx-click="cancel_file_upload"
+                    phx-value-ref={entry.ref}
+                  >✕</button>
+                </div>
+                <div class="mt-3">
+                  <progress class="progress w-full" value={entry.progress} max="100" />
+                </div>
+                <%= for err <- upload_errors(@uploads.template_file, entry) do %>
+                  <p class="text-error text-xs mt-1">{upload_error_to_string(err)}</p>
+                <% end %>
               <% end %>
-            <% end %>
-          </div>
+            </div>
+            <div class="modal-action">
+              <button type="button" class="btn btn-ghost" phx-click="close_upload_modal">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn btn-primary"
+                disabled={@uploads.template_file.entries == []}
+              >
+                Upload and link
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <%!-- Library tab --%>
+        <div :if={@upload_modal_tab == :library}>
+          <input
+            type="text"
+            class="input input-bordered input-sm w-full mb-3"
+            placeholder="Search by filename…"
+            value={@media_library_search}
+            phx-keyup="media_library_search"
+            phx-debounce="200"
+            name="search"
+          />
+          <%= if @media_library_files == [] do %>
+            <p class="text-sm opacity-40 text-center py-8">
+              {if @media_library_search == "", do: "No files uploaded yet.", else: "No files match your search."}
+            </p>
+          <% else %>
+            <div class="max-h-80 overflow-y-auto space-y-1 pr-1">
+              <%= for file <- @media_library_files do %>
+                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 group">
+                  <.icon name="hero-paper-clip" class="size-4 opacity-40 shrink-0" />
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm truncate">{file.original_name}</p>
+                    <p class="text-xs opacity-40">
+                      {Calendar.strftime(file.inserted_at, "%d %b %Y, %H:%M")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-outline opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    phx-click="select_library_file"
+                    phx-value-ref={file.ref}
+                  >
+                    Use
+                  </button>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
           <div class="modal-action">
             <button type="button" class="btn btn-ghost" phx-click="close_upload_modal">
               Cancel
             </button>
-            <button
-              type="submit"
-              class="btn btn-primary"
-              disabled={@uploads.template_file.entries == []}
-            >
-              Upload and link
-            </button>
           </div>
-        </form>
+        </div>
       </div>
       <div class="modal-backdrop" phx-click="close_upload_modal"></div>
     </div>
