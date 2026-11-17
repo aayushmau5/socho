@@ -467,7 +467,7 @@ defmodule SochoWeb.StudyLive.Builder do
 
     uploaded_files =
       consume_uploaded_entries(socket, :template_file, fn %{path: tmp_path}, entry ->
-        Socho.Uploads.upload(tmp_path, entry.client_name, entry.content_type)
+        Socho.Uploads.upload(tmp_path, entry.client_name, entry.client_type)
       end)
 
     case uploaded_files do
