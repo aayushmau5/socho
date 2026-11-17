@@ -8,6 +8,7 @@ defmodule SochoWeb.StudyController do
 
   def show(conn, %{"study_id" => study_id}) do
     study = Studies.get_study!(study_id)
+    study = %{study | trials: Socho.Uploads.rebuild_template_groups(study.trials)}
 
     case authorize_study_access(conn.assigns.current_scope, study) do
       :ok ->

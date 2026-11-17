@@ -79,6 +79,17 @@ if config_env() == :prod do
     adapter: Socho.SMS.Adapters.Msg91,
     auth_key: sms_auth_key
 
+  # S3 file uploads — set S3_BUCKET to enable; falls back to local storage otherwise
+  if s3_bucket = System.get_env("S3_BUCKET") do
+    config :socho, :uploads_backend, :s3
+    config :socho, :s3_bucket, s3_bucket
+
+    config :ex_aws,
+      access_key_id: [{:system, "AWS_ACCESS_KEY_ID"}, :instance_role],
+      secret_access_key: [{:system, "AWS_SECRET_ACCESS_KEY"}, :instance_role],
+      region: "ap-south-2"
+  end
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

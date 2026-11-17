@@ -401,7 +401,7 @@ defmodule SochoWeb.StudyLive.Builder do
          %{node_type: "template_group"} = node <- find_node(socket.assigns.trials, id) do
       tpl = Templates.get(node.config["template_id"])
       vars = coerce_template_vars(raw_vars, tpl.variables)
-      children = tpl.build.(vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => vars}
 
       trials =
@@ -421,7 +421,7 @@ defmodule SochoWeb.StudyLive.Builder do
       tpl = Templates.get(node.config["template_id"])
       vars = node.config["vars"] || %{}
       new_vars = Map.update(vars, key, [""], &(&1 ++ [""]))
-      children = tpl.build.(new_vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => new_vars}
       trials = socket.assigns.trials |> update_node_config(id, new_config) |> update_node_children(id, children)
       {:noreply, assign(socket, trials: trials)}
@@ -437,7 +437,7 @@ defmodule SochoWeb.StudyLive.Builder do
       vars = node.config["vars"] || %{}
       new_list = Map.get(vars, key, []) |> ensure_list() |> List.delete_at(String.to_integer(idx_str))
       new_vars = Map.put(vars, key, new_list)
-      children = tpl.build.(new_vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => new_vars}
       trials = socket.assigns.trials |> update_node_config(id, new_config) |> update_node_children(id, children)
       {:noreply, assign(socket, trials: trials)}
@@ -467,10 +467,7 @@ defmodule SochoWeb.StudyLive.Builder do
 
     uploaded_files =
       consume_uploaded_entries(socket, :template_file, fn %{path: tmp_path}, entry ->
-        filename = "#{System.unique_integer([:positive])}_#{entry.client_name}"
-        dest = Path.join([:code.priv_dir(:socho), "static", "uploads", filename])
-        File.cp!(tmp_path, dest)
-        {:ok, "/uploads/#{filename}"}
+        Socho.Uploads.upload(tmp_path, entry.client_name, entry.content_type)
       end)
 
     case uploaded_files do
@@ -480,7 +477,7 @@ defmodule SochoWeb.StudyLive.Builder do
           tpl = Templates.get(node.config["template_id"])
           vars = node.config["vars"] || %{}
           new_vars = Map.update(vars, key, [url], &(&1 ++ [url]))
-          children = tpl.build.(new_vars) |> stamp_ids()
+          children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
           new_config = %{
             "template_id" => node.config["template_id"],
             "template_name" => node.config["template_name"],
@@ -512,7 +509,7 @@ defmodule SochoWeb.StudyLive.Builder do
       tpl = Templates.get(node.config["template_id"])
       vars = node.config["vars"] || %{}
       new_vars = Map.update(vars, key, [["", ""]], &(&1 ++ [["", ""]]))
-      children = tpl.build.(new_vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => new_vars}
       trials = socket.assigns.trials |> update_node_config(id, new_config) |> update_node_children(id, children)
       {:noreply, assign(socket, trials: trials)}
@@ -528,7 +525,7 @@ defmodule SochoWeb.StudyLive.Builder do
       vars = node.config["vars"] || %{}
       new_list = Map.get(vars, key, []) |> ensure_list() |> List.delete_at(String.to_integer(idx_str))
       new_vars = Map.put(vars, key, new_list)
-      children = tpl.build.(new_vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => new_vars}
       trials = socket.assigns.trials |> update_node_config(id, new_config) |> update_node_children(id, children)
       {:noreply, assign(socket, trials: trials)}
@@ -978,7 +975,7 @@ defmodule SochoWeb.StudyLive.Builder do
                         <% items = Map.get(current_vars, var.key, var.default) |> ensure_list() %>
                         <div class="space-y-1 mt-1">
                           <%= for {item, idx} <- Enum.with_index(items) do %>
-                            <%= if String.starts_with?(item, "/uploads/") do %>
+                            <%= if String.starts_with?(item, "/uploads/") or String.starts_with?(item, "s3:") do %>
                               <div class="flex items-center gap-2 bg-base-200 rounded px-2 py-1">
                                 <.icon name="hero-paper-clip" class="size-3 opacity-50 shrink-0" />
                                 <span class="text-sm flex-1 truncate">{Path.basename(item)}</span>
