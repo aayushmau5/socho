@@ -10,7 +10,7 @@ defmodule Socho.Uploads do
   alias Socho.Media
   alias Socho.Studies.Templates
 
-  @s3_region "ap-south-2"
+  @s3_region "ap-south-1"
   @presign_ttl 3600
 
   # ── Public API ──────────────────────────────────────────────────────────────
@@ -34,6 +34,7 @@ defmodule Socho.Uploads do
           file_size: file_size,
           content_type: content_type
         })
+
         {:ok, ref}
 
       error ->
@@ -64,6 +65,7 @@ defmodule Socho.Uploads do
 
           tpl ->
             vars = node.config["vars"] || %{}
+
             new_children =
               vars
               |> resolve_vars()

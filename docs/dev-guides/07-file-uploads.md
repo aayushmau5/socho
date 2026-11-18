@@ -71,7 +71,7 @@ AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 ```
 
-The region is hardcoded to `ap-south-2` in `Socho.Uploads`. When `S3_BUCKET` is present, `config/runtime.exs` sets `:uploads_backend` to `:s3` and configures `ex_aws`. When it is absent, the local backend is used with no additional config required.
+The region is hardcoded to `ap-south-1` in `Socho.Uploads`. When `S3_BUCKET` is present, `config/runtime.exs` sets `:uploads_backend` to `:s3` and configures `ex_aws`. When it is absent, the local backend is used with no additional config required.
 
 ### Where Uploads Appear in the Codebase
 
