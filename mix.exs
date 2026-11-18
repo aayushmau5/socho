@@ -70,7 +70,7 @@ defmodule Socho.MixProject do
       {:nimble_csv, "~> 1.2"},
       {:ex_aws, "~> 2.5"},
       {:ex_aws_s3, "~> 2.5"},
-      {:hackney, "~> 1.9"}
+      {:hackney, "~> 4.0"}
     ]
   end
 
