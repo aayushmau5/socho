@@ -297,7 +297,6 @@ defmodule Socho.Studies.Templates.Iat do
                 var c1_test       = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined1_test'     && x.rt >= 400 && x.rt < 10000; });
                 var c2_practice   = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined2_practice' && x.rt >= 400 && x.rt < 10000; });
                 var c2_test       = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined2_test'     && x.rt >= 400 && x.rt < 10000; });
-                // Greenwald 2003: use fresh filterCustom for pooled sets to avoid DataCollection.join() mutating its receiver
                 var c1_pool       = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_practice' || x.iat_type === 'combined1_test')     && x.rt >= 400 && x.rt < 10000; });
                 var c2_pool       = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined2_practice' || x.iat_type === 'combined2_test')     && x.rt >= 400 && x.rt < 10000; });
                 var practice_pool = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_practice' || x.iat_type === 'combined2_practice') && x.rt >= 400 && x.rt < 10000; });
@@ -310,19 +309,6 @@ defmodule Socho.Studies.Templates.Iat do
                 var d1 = (c2_practice.select('rt').mean() - c1_practice.select('rt').mean()) / sd1;
                 var d2 = (c2_test.select('rt').mean()     - c1_test.select('rt').mean())     / sd2;
                 var d = (d1 + d2) / 2;
-                jsPsych.data.get().push({ iat_type: 'iat_summary', d_score: d, mean_c1: mean_c1, mean_c2: mean_c2 });
-
-                // DEBUG: set to false to disable automatic data download in preview mode
-                var DEBUG_DOWNLOAD_IN_PREVIEW = true;
-                if (DEBUG_DOWNLOAD_IN_PREVIEW && new URLSearchParams(window.location.search).get('preview') === 'true') {
-                  var blob = new Blob([jsPsych.data.get().json()], {type: 'application/json'});
-                  var a = document.createElement('a');
-                  a.href = URL.createObjectURL(blob);
-                  a.download = 'iat_data_debug.json';
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                }
 
                 return "<h2>You're done \u2014 thank you!</h2>" +
                   "<p>When <strong>#{cat1_label}</strong> and <strong>#{att1_label}</strong> were paired, " +
@@ -334,6 +320,28 @@ defmodule Socho.Studies.Templates.Iat do
                   "A positive score suggests a stronger association between #{cat1_label} and #{att1_label}. " +
                   "A negative score suggests a stronger association between #{cat2_label} and #{att1_label}. " +
                   "Scores above 0.15 are slight, above 0.35 moderate, above 0.65 strong.</p>";
+              """,
+              "on_finish_function" => """
+                var c1_practice   = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined1_practice' && x.rt >= 400 && x.rt < 10000; });
+                var c1_test       = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined1_test'     && x.rt >= 400 && x.rt < 10000; });
+                var c2_practice   = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined2_practice' && x.rt >= 400 && x.rt < 10000; });
+                var c2_test       = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined2_test'     && x.rt >= 400 && x.rt < 10000; });
+                var c1_pool       = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_practice' || x.iat_type === 'combined1_test')     && x.rt >= 400 && x.rt < 10000; });
+                var c2_pool       = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined2_practice' || x.iat_type === 'combined2_test')     && x.rt >= 400 && x.rt < 10000; });
+                var practice_pool = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_practice' || x.iat_type === 'combined2_practice') && x.rt >= 400 && x.rt < 10000; });
+                var test_pool     = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_test'     || x.iat_type === 'combined2_test')     && x.rt >= 400 && x.rt < 10000; });
+
+                var mean_c1 = c1_pool.select('rt').mean();
+                var mean_c2 = c2_pool.select('rt').mean();
+                var sd1 = practice_pool.select('rt').sd();
+                var sd2 = test_pool.select('rt').sd();
+                var d1 = (c2_practice.select('rt').mean() - c1_practice.select('rt').mean()) / sd1;
+                var d2 = (c2_test.select('rt').mean()     - c1_test.select('rt').mean())     / sd2;
+                var d = (d1 + d2) / 2;
+                data.iat_type = 'iat_summary';
+                data.d_score = d;
+                data.mean_c1 = mean_c1;
+                data.mean_c2 = mean_c2;
               """,
               "choices" => ["Finish"],
               "button_layout" => "grid",

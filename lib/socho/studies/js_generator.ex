@@ -746,7 +746,7 @@ defmodule Socho.Studies.JsGenerator do
   end
 
   defp config_to_js(config, _plugin) do
-    {fn_entries, normal_entries} = Map.split(config, ["stimulus_function"])
+    {fn_entries, normal_entries} = Map.split(config, ["stimulus_function", "on_finish_function"])
 
     normal_js =
       normal_entries
@@ -755,8 +755,11 @@ defmodule Socho.Studies.JsGenerator do
 
     fn_js =
       fn_entries
-      |> Enum.map(fn {_key, body} ->
-        "  stimulus: function() {\n#{indent_js_body(body)}\n  },"
+      |> Enum.map(fn
+        {"stimulus_function", body} ->
+          "  stimulus: function() {\n#{indent_js_body(body)}\n  },"
+        {"on_finish_function", body} ->
+          "  on_finish: function(data) {\n#{indent_js_body(body)}\n  },"
       end)
       |> Enum.join("\n")
 
