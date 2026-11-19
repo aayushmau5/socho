@@ -139,4 +139,6 @@ if config_env() == :prod do
   #     config :swoosh, :api_client, Swoosh.ApiClient.Req
   #
   # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+
+  config :dau, DAU.Mailer, adapter: Swoosh.Adapters.ExAwsAmazonSES
 end
