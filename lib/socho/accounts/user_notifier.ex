@@ -9,7 +9,7 @@ defmodule Socho.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"Socho", "contact@example.com"})
+      |> from({"Socho", "admin@tattle.co.in"})
       |> subject(subject)
       |> text_body(body)
 
