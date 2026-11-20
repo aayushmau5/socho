@@ -47,7 +47,7 @@ defmodule SochoWeb.StudyLive.Index do
                 <summary class="btn btn-outline btn-sm list-none cursor-pointer">↑ Import</summary>
                 <div class="absolute right-0 top-full mt-2 z-10 bg-base-100 border border-base-300 rounded-lg shadow-lg p-4 w-72">
                   <p class="text-sm font-medium mb-2">Import study template</p>
-                  <p class="text-xs opacity-50 mb-3">Upload a <code>.json</code> file exported from Socho. A new draft study will be created.</p>
+                  <p class="text-xs opacity-50 mb-3">Upload a <code>.json</code> file exported from {Application.get_env(:socho, :app_label, "Socho")}. A new draft study will be created.</p>
                   <form action="/studies/import-template" method="post" enctype="multipart/form-data" class="flex flex-col gap-2">
                     <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
                     <input type="file" name="file" accept=".json" class="file-input file-input-bordered file-input-sm w-full" required />

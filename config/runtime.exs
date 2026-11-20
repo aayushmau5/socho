@@ -16,6 +16,8 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
+config :socho, :app_label, System.get_env("APP_LABEL", "Socho")
+
 if System.get_env("PHX_SERVER") do
   config :socho, SochoWeb.Endpoint, server: true
 end

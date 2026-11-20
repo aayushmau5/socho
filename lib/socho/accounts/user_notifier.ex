@@ -9,7 +9,7 @@ defmodule Socho.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"Socho", "admin@tattle.co.in"})
+      |> from({Application.get_env(:socho, :app_label, "Socho"), "admin@tattle.co.in"})
       |> subject(subject)
       |> text_body(body)
 
@@ -24,13 +24,14 @@ defmodule Socho.Accounts.UserNotifier do
   def deliver_invitation(user, url) do
     role_label = user.role |> to_string() |> String.capitalize()
 
-    deliver(user.email, "You've been invited to Socho", """
+    app_label = Application.get_env(:socho, :app_label, "Socho")
+    deliver(user.email, "You've been invited to #{app_label}", """
 
     ==============================
 
     Hi #{user.email},
 
-    You've been invited to join Socho as a #{role_label}.
+    You've been invited to join #{app_label} as a #{role_label}.
 
     Click the link below to confirm your account and log in:
 
