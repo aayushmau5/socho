@@ -16,24 +16,37 @@ defmodule SochoWeb.StudyLive.Builder do
     registry = Registry.all()
     plugin_names = registry |> Map.keys() |> Enum.sort()
 
-    {:ok,
-     assign(socket,
-       registry: registry,
-       plugin_names: plugin_names,
-       plugin_search: "",
-       filtered_plugins: plugin_names,
-       study_id: nil,
-       study_title: "",
-       study_client_id: nil,
-       clients: Clients.list_clients(),
-       trials: [],
-       selected_trial_id: nil,
-       show_preview: false,
-       preview_key: 0,
-       sidebar_tab: :blocks,
-       templates: Templates.all(),
-       template_group_key: 0
-     )}
+    socket =
+      socket
+      |> assign(
+        registry: registry,
+        plugin_names: plugin_names,
+        plugin_search: "",
+        filtered_plugins: plugin_names,
+        study_id: nil,
+        study_title: "",
+        study_client_id: nil,
+        clients: Clients.list_clients(),
+        trials: [],
+        selected_trial_id: nil,
+        show_preview: false,
+        preview_key: 0,
+        sidebar_tab: :blocks,
+        templates: Templates.all(),
+        template_group_key: 0,
+        upload_modal_open: false,
+        upload_modal_var_key: nil,
+        upload_modal_tab: :upload,
+        media_library_search: "",
+        media_library_files: []
+      )
+      |> allow_upload(:template_file,
+        accept: ~w(.jpg .jpeg .png .gif .webp .svg .mp4 .wav .mp3),
+        max_entries: 1,
+        max_file_size: 2_000_000
+      )
+
+    {:ok, socket}
   end
 
   @impl true
@@ -391,7 +404,7 @@ defmodule SochoWeb.StudyLive.Builder do
          %{node_type: "template_group"} = node <- find_node(socket.assigns.trials, id) do
       tpl = Templates.get(node.config["template_id"])
       vars = coerce_template_vars(raw_vars, tpl.variables)
-      children = tpl.build.(vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => vars}
 
       trials =
@@ -411,7 +424,7 @@ defmodule SochoWeb.StudyLive.Builder do
       tpl = Templates.get(node.config["template_id"])
       vars = node.config["vars"] || %{}
       new_vars = Map.update(vars, key, [""], &(&1 ++ [""]))
-      children = tpl.build.(new_vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => new_vars}
       trials = socket.assigns.trials |> update_node_config(id, new_config) |> update_node_children(id, children)
       {:noreply, assign(socket, trials: trials)}
@@ -427,12 +440,120 @@ defmodule SochoWeb.StudyLive.Builder do
       vars = node.config["vars"] || %{}
       new_list = Map.get(vars, key, []) |> ensure_list() |> List.delete_at(String.to_integer(idx_str))
       new_vars = Map.put(vars, key, new_list)
-      children = tpl.build.(new_vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => new_vars}
       trials = socket.assigns.trials |> update_node_config(id, new_config) |> update_node_children(id, children)
       {:noreply, assign(socket, trials: trials)}
     else
       _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("open_upload_modal", %{"key" => key}, socket) do
+    {:noreply,
+     assign(socket,
+       upload_modal_open: true,
+       upload_modal_var_key: key,
+       upload_modal_tab: :upload,
+       media_library_search: "",
+       media_library_files: Socho.Media.list_files()
+     )}
+  end
+
+  def handle_event("close_upload_modal", _params, socket) do
+    {:noreply,
+     assign(socket, upload_modal_open: false, upload_modal_var_key: nil, upload_modal_tab: :upload)}
+  end
+
+  def handle_event("switch_upload_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, upload_modal_tab: String.to_existing_atom(tab))}
+  end
+
+  def handle_event("media_library_search", %{"value" => term}, socket) do
+    {:noreply,
+     assign(socket,
+       media_library_search: term,
+       media_library_files: Socho.Media.list_files(term)
+     )}
+  end
+
+  def handle_event("select_library_file", %{"ref" => ref}, socket) do
+    key = socket.assigns.upload_modal_var_key
+
+    with id when not is_nil(id) <- socket.assigns.selected_trial_id,
+         %{node_type: "template_group"} = node <- find_node(socket.assigns.trials, id) do
+      tpl = Templates.get(node.config["template_id"])
+      vars = node.config["vars"] || %{}
+      new_vars = Map.update(vars, key, [ref], &(&1 ++ [ref]))
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
+      new_config = %{
+        "template_id" => node.config["template_id"],
+        "template_name" => node.config["template_name"],
+        "vars" => new_vars
+      }
+      trials =
+        socket.assigns.trials
+        |> update_node_config(id, new_config)
+        |> update_node_children(id, children)
+
+      {:noreply,
+       assign(socket,
+         trials: trials,
+         upload_modal_open: false,
+         upload_modal_var_key: nil,
+         upload_modal_tab: :upload
+       )}
+    else
+      _ -> {:noreply, assign(socket, upload_modal_open: false, upload_modal_var_key: nil)}
+    end
+  end
+
+  def handle_event("validate_template_file", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("cancel_file_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :template_file, ref)}
+  end
+
+  def handle_event("use_uploaded_file", _params, socket) do
+    key = socket.assigns.upload_modal_var_key
+
+    uploaded_files =
+      consume_uploaded_entries(socket, :template_file, fn %{path: tmp_path}, entry ->
+        Socho.Uploads.upload(tmp_path, entry.client_name, entry.client_type)
+      end)
+
+    case uploaded_files do
+      [url] ->
+        with id when not is_nil(id) <- socket.assigns.selected_trial_id,
+             %{node_type: "template_group"} = node <- find_node(socket.assigns.trials, id) do
+          tpl = Templates.get(node.config["template_id"])
+          vars = node.config["vars"] || %{}
+          new_vars = Map.update(vars, key, [url], &(&1 ++ [url]))
+          children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
+          new_config = %{
+            "template_id" => node.config["template_id"],
+            "template_name" => node.config["template_name"],
+            "vars" => new_vars
+          }
+          trials =
+            socket.assigns.trials
+            |> update_node_config(id, new_config)
+            |> update_node_children(id, children)
+
+          {:noreply,
+           assign(socket,
+             trials: trials,
+             upload_modal_open: false,
+             upload_modal_var_key: nil
+           )}
+        else
+          _ -> {:noreply, assign(socket, upload_modal_open: false, upload_modal_var_key: nil)}
+        end
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -442,7 +563,7 @@ defmodule SochoWeb.StudyLive.Builder do
       tpl = Templates.get(node.config["template_id"])
       vars = node.config["vars"] || %{}
       new_vars = Map.update(vars, key, [["", ""]], &(&1 ++ [["", ""]]))
-      children = tpl.build.(new_vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => new_vars}
       trials = socket.assigns.trials |> update_node_config(id, new_config) |> update_node_children(id, children)
       {:noreply, assign(socket, trials: trials)}
@@ -458,7 +579,7 @@ defmodule SochoWeb.StudyLive.Builder do
       vars = node.config["vars"] || %{}
       new_list = Map.get(vars, key, []) |> ensure_list() |> List.delete_at(String.to_integer(idx_str))
       new_vars = Map.put(vars, key, new_list)
-      children = tpl.build.(new_vars) |> stamp_ids()
+      children = tpl.build.(Socho.Uploads.resolve_vars(new_vars)) |> stamp_ids()
       new_config = %{"template_id" => node.config["template_id"], "template_name" => node.config["template_name"], "vars" => new_vars}
       trials = socket.assigns.trials |> update_node_config(id, new_config) |> update_node_children(id, children)
       {:noreply, assign(socket, trials: trials)}
@@ -594,10 +715,6 @@ defmodule SochoWeb.StudyLive.Builder do
     end)
   end
 
-  defp ensure_list(nil), do: []
-  defp ensure_list(list) when is_list(list), do: list
-  defp ensure_list(_), do: []
-
   defp coerce_template_vars(raw_vars, var_defs) do
     Map.new(raw_vars, fn {key, val} ->
       var_def = Enum.find(var_defs, fn v -> v.key == key end)
@@ -627,9 +744,18 @@ defmodule SochoWeb.StudyLive.Builder do
     end)
   end
 
-  defp ensure_pair([a, b]), do: [a, b]
-  defp ensure_pair([a]), do: [a, ""]
-  defp ensure_pair(_), do: ["", ""]
+  defp group_template_vars(variables) do
+    variables
+    |> Enum.chunk_by(& &1[:group])
+    |> Enum.map(fn group_vars ->
+      group = hd(group_vars)[:group]
+      sections =
+        group_vars
+        |> Enum.chunk_by(& &1[:section])
+        |> Enum.map(fn section_vars -> {hd(section_vars)[:section], section_vars} end)
+      {group, sections}
+    end)
+  end
 
   defp sorted_params(parameters) do
     Enum.sort_by(parameters, fn {_, spec} ->
@@ -834,7 +960,8 @@ defmodule SochoWeb.StudyLive.Builder do
         </div>
 
         <%!-- Column 2: Config panel --%>
-        <div class="flex flex-col gap-2 border-l border-base-300 pl-4 sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto">
+        <div class="flex flex-col gap-2 border-l border-base-300 pl-4 sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto min-w-0">
+          <div class="w-full max-w-sm flex flex-col gap-2">
           <%= if @selected_trial && @selected_trial.node_type == "template_group" do %>
             <p class="text-xs font-semibold uppercase tracking-wider opacity-50 shrink-0">Configure</p>
             <p class="text-sm font-medium text-accent shrink-0 -mt-1">{@selected_template && @selected_template.name}</p>
@@ -843,118 +970,44 @@ defmodule SochoWeb.StudyLive.Builder do
               <form
                 phx-change="template_vars_changed"
                 id={"template-vars-form-#{@template_group_key}"}
-                class="space-y-5"
+                class="space-y-4"
               >
-                <%= for var <- (@selected_template && @selected_template.variables) || [] do %>
-                  <% current_vars = @selected_trial.config["vars"] || %{} %>
-                  <div class="form-control">
-                    <p class="text-sm font-medium leading-tight">{var.label}</p>
-                    <%= if var.type == :pair_list do %>
-                      <% pairs = Map.get(current_vars, var.key, var.default) |> ensure_list() %>
-                      <div class="space-y-2 mt-1">
-                        <%= for {pair, idx} <- Enum.with_index(pairs) do %>
-                          <% [img_a, img_b] = ensure_pair(pair) %>
-                          <div class="border border-base-300 rounded p-2 space-y-1">
-                            <div class="flex items-center justify-between mb-1">
-                              <span class="text-xs font-medium opacity-50">Pair {idx + 1}</span>
-                              <button
-                                type="button"
-                                class="btn btn-xs btn-ghost text-error"
-                                phx-click="template_var_pair_remove"
-                                phx-value-key={var.key}
-                                phx-value-index={idx}
-                              >✕</button>
-                            </div>
-                            <input
-                              type="text"
-                              class="input input-bordered input-sm w-full"
-                              name={"vars[#{var.key}][#{idx}][0]"}
-                              value={img_a}
-                              placeholder="Image A URL"
-                              phx-debounce="300"
-                            />
-                            <input
-                              type="text"
-                              class="input input-bordered input-sm w-full"
-                              name={"vars[#{var.key}][#{idx}][1]"}
-                              value={img_b}
-                              placeholder="Image B URL"
-                              phx-debounce="300"
-                            />
-                          </div>
-                        <% end %>
-                        <button
-                          type="button"
-                          class="btn btn-xs btn-outline w-full"
-                          phx-click="template_var_pair_add"
-                          phx-value-key={var.key}
-                        >+ Add Pair</button>
-                      </div>
-                    <% else %>
-                      <%= if var.type == :boolean do %>
-                        <div class="flex items-center gap-2 mt-1">
-                          <input type="hidden" name={"vars[#{var.key}]"} value="false" />
-                          <input
-                            type="checkbox"
-                            id={"tvar-#{@template_group_key}-#{var.key}"}
-                            class="checkbox checkbox-sm"
-                            name={"vars[#{var.key}]"}
-                            value="true"
-                            checked={Map.get(current_vars, var.key, var.default) == true}
-                          />
-                        </div>
-                      <% else %>
-                      <%= if var.type == :list do %>
-                        <% items = Map.get(current_vars, var.key, var.default) |> ensure_list() %>
-                        <div class="space-y-1 mt-1">
-                          <%= for {item, idx} <- Enum.with_index(items) do %>
-                            <div class="flex items-center gap-2">
-                              <input
-                                type="text"
-                                class="input input-bordered input-sm flex-1"
-                                name={"vars[#{var.key}][#{idx}]"}
-                                value={item}
-                                phx-debounce="300"
-                              />
-                              <button
-                                type="button"
-                                class="btn btn-xs btn-ghost text-error shrink-0"
-                                phx-click="template_var_list_remove"
-                                phx-value-key={var.key}
-                                phx-value-index={idx}
-                              >✕</button>
-                            </div>
-                          <% end %>
-                          <button
-                            type="button"
-                            class="btn btn-xs btn-outline w-full"
-                            phx-click="template_var_list_add"
-                            phx-value-key={var.key}
-                          >+ Add</button>
-                        </div>
-                      <% else %>
-                        <p class="text-xs opacity-40 mt-0.5 mb-1">
-                          {if var.type == :int, do: "INT", else: "TEXT"}
-                        </p>
-                        <textarea
-                          :if={var.type == :text}
-                          id={"tvar-#{@template_group_key}-#{var.key}"}
-                          class="textarea textarea-bordered textarea-sm text-xs font-mono leading-snug w-full"
-                          name={"vars[#{var.key}]"}
-                          rows="4"
-                        >{Map.get(current_vars, var.key, var.default)}</textarea>
-                        <input
-                          :if={var.type == :int}
-                          id={"tvar-#{@template_group_key}-#{var.key}"}
-                          type="number"
-                          class="input input-bordered input-sm w-full"
-                          name={"vars[#{var.key}]"}
-                          value={Map.get(current_vars, var.key, var.default)}
-                          step="1"
-                        />
-                      <% end %>
-                      <% end %>
+                <% current_vars = @selected_trial.config["vars"] || %{} %>
+                <% all_vars = (@selected_template && @selected_template.variables) || [] %>
+                <%= for {group, sections} <- group_template_vars(all_vars) do %>
+                  <div class={if group, do: "space-y-2", else: "space-y-4"}>
+                    <%= if group do %>
+                      <p class="text-xs font-bold uppercase tracking-wider opacity-70 pt-1">{group}</p>
                     <% end %>
+                    <div class={if group, do: "space-y-2", else: "space-y-4"}>
+                      <%= for {section, vars} <- sections do %>
+                        <%= if section do %>
+                          <div class="rounded-lg border border-base-300 overflow-hidden">
+                            <div class="bg-base-300 px-3 py-1.5">
+                              <p class="text-xs font-semibold opacity-60">{section}</p>
+                            </div>
+                            <div class="px-3 pt-2 pb-3 space-y-3">
+                              <%= for var <- vars do %>
+                                <.template_var_field
+                                  var={var}
+                                  current_vars={current_vars}
+                                  group_key={@template_group_key}
+                                  compact={true}
+                                />
+                              <% end %>
+                            </div>
+                          </div>
+                        <% else %>
+                          <%= for var <- vars do %>
+                            <.template_var_field
+                              var={var}
+                              current_vars={current_vars}
+                              group_key={@template_group_key}
+                            />
+                          <% end %>
+                        <% end %>
+                      <% end %>
+                    </div>
                   </div>
                 <% end %>
               </form>
@@ -1211,6 +1264,7 @@ defmodule SochoWeb.StudyLive.Builder do
             <% end %>
           <% end %>
           <% end %>
+          </div>
         </div>
 
         <%!-- Column 3: Phone preview --%>
@@ -1246,9 +1300,138 @@ defmodule SochoWeb.StudyLive.Builder do
 
       </div>
     </div>
+    <%!-- File Upload / Library Modal --%>
+    <div :if={@upload_modal_open} class="modal modal-open">
+      <div class="modal-box max-w-lg">
+        <%!-- Tab bar --%>
+        <div role="tablist" class="tabs tabs-bordered mb-4">
+          <button
+            role="tab"
+            type="button"
+            class={["tab", if(@upload_modal_tab == :upload, do: "tab-active")]}
+            phx-click="switch_upload_tab"
+            phx-value-tab="upload"
+          >Upload new</button>
+          <button
+            role="tab"
+            type="button"
+            class={["tab", if(@upload_modal_tab == :library, do: "tab-active")]}
+            phx-click="switch_upload_tab"
+            phx-value-tab="library"
+          >Library</button>
+        </div>
+
+        <%!-- Upload tab --%>
+        <div :if={@upload_modal_tab == :upload}>
+          <form
+            id="file-upload-form"
+            phx-change="validate_template_file"
+            phx-submit="use_uploaded_file"
+          >
+            <div
+              class="border-2 border-dashed border-base-300 rounded-lg p-8 text-center hover:border-primary transition-colors"
+              phx-drop-target={@uploads.template_file.ref}
+            >
+              <.live_file_input upload={@uploads.template_file} class="hidden" />
+              <div :if={@uploads.template_file.entries == []}>
+                <p class="text-sm opacity-50 mb-3">Drag &amp; drop a file here, or</p>
+                <label
+                  for={@uploads.template_file.ref}
+                  class="btn btn-sm btn-outline cursor-pointer"
+                >
+                  Browse Files
+                </label>
+              </div>
+              <%= for entry <- @uploads.template_file.entries do %>
+                <div class="flex items-center gap-3 justify-center">
+                  <.icon name="hero-paper-clip" class="size-5" />
+                  <span class="font-medium text-sm">{entry.client_name}</span>
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-ghost"
+                    phx-click="cancel_file_upload"
+                    phx-value-ref={entry.ref}
+                  >✕</button>
+                </div>
+                <div class="mt-3">
+                  <progress class="progress w-full" value={entry.progress} max="100" />
+                </div>
+                <%= for err <- upload_errors(@uploads.template_file, entry) do %>
+                  <p class="text-error text-xs mt-1">{upload_error_to_string(err)}</p>
+                <% end %>
+              <% end %>
+            </div>
+            <div class="modal-action">
+              <button type="button" class="btn btn-ghost" phx-click="close_upload_modal">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn btn-primary"
+                disabled={@uploads.template_file.entries == []}
+              >
+                Upload and link
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <%!-- Library tab --%>
+        <div :if={@upload_modal_tab == :library}>
+          <input
+            type="text"
+            class="input input-bordered input-sm w-full mb-3"
+            placeholder="Search by filename…"
+            value={@media_library_search}
+            phx-keyup="media_library_search"
+            phx-debounce="200"
+            name="search"
+          />
+          <%= if @media_library_files == [] do %>
+            <p class="text-sm opacity-40 text-center py-8">
+              {if @media_library_search == "", do: "No files uploaded yet.", else: "No files match your search."}
+            </p>
+          <% else %>
+            <div class="max-h-80 overflow-y-auto space-y-1 pr-1">
+              <%= for file <- @media_library_files do %>
+                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 group">
+                  <.icon name="hero-paper-clip" class="size-4 opacity-40 shrink-0" />
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm truncate">{file.original_name}</p>
+                    <p class="text-xs opacity-40">
+                      {Calendar.strftime(file.inserted_at, "%d %b %Y, %H:%M")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-outline opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    phx-click="select_library_file"
+                    phx-value-ref={file.ref}
+                  >
+                    Use
+                  </button>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" phx-click="close_upload_modal">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-backdrop" phx-click="close_upload_modal"></div>
+    </div>
+
     </Layouts.app>
 
 
     """
   end
+
+  defp upload_error_to_string(:too_large), do: "File too large (max 2 MB)"
+  defp upload_error_to_string(:not_accepted), do: "File type not accepted"
+  defp upload_error_to_string(:too_many_files), do: "Upload one file at a time"
+  defp upload_error_to_string(_), do: "Upload error"
 end

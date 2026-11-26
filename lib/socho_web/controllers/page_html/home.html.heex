@@ -3,7 +3,7 @@
 
     <%!-- Hero --%>
     <div class="space-y-4">
-      <h1 class="text-4xl font-bold tracking-tight">Socho</h1>
+      <h1 class="text-4xl font-bold tracking-tight">{Application.get_env(:socho, :app_label, "Socho")}</h1>
       <p class="text-lg text-base-content/70 max-w-xl">
         A platform for building and running online behavioural studies using
         <a href="https://www.jspsych.org/latest/" class="link link-primary" target="_blank">jsPsych</a>.

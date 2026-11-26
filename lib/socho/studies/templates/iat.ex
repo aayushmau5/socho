@@ -8,34 +8,14 @@ defmodule Socho.Studies.Templates.Iat do
       description:
         "7-block IAT measuring implicit associations between two categories and two attributes using image stimuli.",
       variables: [
-        %{key: "cat1_label", label: "Category 1 label", type: :text, default: "Category A"},
-        %{
-          key: "cat1_images",
-          label: "Category 1 stimuli (one image URL or word per line)",
-          type: :text,
-          default: "https://example.com/cat1_1.jpg\nhttps://example.com/cat1_2.jpg"
-        },
-        %{key: "cat2_label", label: "Category 2 label", type: :text, default: "Category B"},
-        %{
-          key: "cat2_images",
-          label: "Category 2 stimuli (one image URL or word per line)",
-          type: :text,
-          default: "https://example.com/cat2_1.jpg\nhttps://example.com/cat2_2.jpg"
-        },
-        %{key: "att1_label", label: "Attribute 1 label", type: :text, default: "Pleasant"},
-        %{
-          key: "att1_images",
-          label: "Attribute 1 stimuli (one image URL or word per line)",
-          type: :text,
-          default: "Pleasant\nJoyful\nHappy"
-        },
-        %{key: "att2_label", label: "Attribute 2 label", type: :text, default: "Unpleasant"},
-        %{
-          key: "att2_images",
-          label: "Attribute 2 stimuli (one image URL or word per line)",
-          type: :text,
-          default: "Unpleasant\nSad\nAngry"
-        },
+        %{key: "cat1_label", label: "Label", type: :string, group: "Categories", section: "Category 1", default: "Category A"},
+        %{key: "cat1_images", label: "Stimuli", type: :list, group: "Categories", section: "Category 1", default: ["https://example.com/cat1_1.jpg", "https://example.com/cat1_2.jpg"]},
+        %{key: "cat2_label", label: "Label", type: :string, group: "Categories", section: "Category 2", default: "Category B"},
+        %{key: "cat2_images", label: "Stimuli", type: :list, group: "Categories", section: "Category 2", default: ["https://example.com/cat2_1.jpg", "https://example.com/cat2_2.jpg"]},
+        %{key: "att1_label", label: "Label", type: :string, group: "Attributes", section: "Attribute 1", default: "Pleasant"},
+        %{key: "att1_images", label: "Stimuli", type: :list, group: "Attributes", section: "Attribute 1", default: ["Pleasant", "Joyful", "Happy"]},
+        %{key: "att2_label", label: "Label", type: :string, group: "Attributes", section: "Attribute 2", default: "Unpleasant"},
+        %{key: "att2_images", label: "Stimuli", type: :list, group: "Attributes", section: "Attribute 2", default: ["Unpleasant", "Sad", "Angry"]},
         %{
           key: "instructions_html",
           label: "General instructions",
@@ -51,20 +31,23 @@ defmodule Socho.Studies.Templates.Iat do
         att2_label = Map.get(vars, "att2_label", "Unpleasant")
         instructions = Map.get(vars, "instructions_html", "")
 
-        parse_lines = fn text ->
-          text
-          |> String.split("\n")
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
+        to_list = fn val ->
+          cond do
+            is_list(val) -> Enum.reject(val, &(&1 == ""))
+            is_binary(val) -> val |> String.split("\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+            true -> []
+          end
         end
 
-        cat1_images = parse_lines.(Map.get(vars, "cat1_images", ""))
-        cat2_images = parse_lines.(Map.get(vars, "cat2_images", ""))
-        att1_images = parse_lines.(Map.get(vars, "att1_images", ""))
-        att2_images = parse_lines.(Map.get(vars, "att2_images", ""))
+        cat1_images = to_list.(Map.get(vars, "cat1_images", []))
+        cat2_images = to_list.(Map.get(vars, "cat2_images", []))
+        att1_images = to_list.(Map.get(vars, "att1_images", []))
+        att2_images = to_list.(Map.get(vars, "att2_images", []))
 
         is_url = fn item ->
-          String.starts_with?(item, "http://") or String.starts_with?(item, "https://")
+          String.starts_with?(item, "http://") or
+            String.starts_with?(item, "https://") or
+            String.starts_with?(item, "/uploads/")
         end
 
         to_stimulus = fn item ->
@@ -314,7 +297,6 @@ defmodule Socho.Studies.Templates.Iat do
                 var c1_test       = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined1_test'     && x.rt >= 400 && x.rt < 10000; });
                 var c2_practice   = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined2_practice' && x.rt >= 400 && x.rt < 10000; });
                 var c2_test       = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined2_test'     && x.rt >= 400 && x.rt < 10000; });
-                // Greenwald 2003: use fresh filterCustom for pooled sets to avoid DataCollection.join() mutating its receiver
                 var c1_pool       = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_practice' || x.iat_type === 'combined1_test')     && x.rt >= 400 && x.rt < 10000; });
                 var c2_pool       = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined2_practice' || x.iat_type === 'combined2_test')     && x.rt >= 400 && x.rt < 10000; });
                 var practice_pool = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_practice' || x.iat_type === 'combined2_practice') && x.rt >= 400 && x.rt < 10000; });
@@ -327,19 +309,6 @@ defmodule Socho.Studies.Templates.Iat do
                 var d1 = (c2_practice.select('rt').mean() - c1_practice.select('rt').mean()) / sd1;
                 var d2 = (c2_test.select('rt').mean()     - c1_test.select('rt').mean())     / sd2;
                 var d = (d1 + d2) / 2;
-                jsPsych.data.get().push({ iat_type: 'iat_summary', d_score: d, mean_c1: mean_c1, mean_c2: mean_c2 });
-
-                // DEBUG: set to false to disable automatic data download in preview mode
-                var DEBUG_DOWNLOAD_IN_PREVIEW = true;
-                if (DEBUG_DOWNLOAD_IN_PREVIEW && new URLSearchParams(window.location.search).get('preview') === 'true') {
-                  var blob = new Blob([jsPsych.data.get().json()], {type: 'application/json'});
-                  var a = document.createElement('a');
-                  a.href = URL.createObjectURL(blob);
-                  a.download = 'iat_data_debug.json';
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                }
 
                 return "<h2>You're done \u2014 thank you!</h2>" +
                   "<p>When <strong>#{cat1_label}</strong> and <strong>#{att1_label}</strong> were paired, " +
@@ -351,6 +320,28 @@ defmodule Socho.Studies.Templates.Iat do
                   "A positive score suggests a stronger association between #{cat1_label} and #{att1_label}. " +
                   "A negative score suggests a stronger association between #{cat2_label} and #{att1_label}. " +
                   "Scores above 0.15 are slight, above 0.35 moderate, above 0.65 strong.</p>";
+              """,
+              "on_finish_function" => """
+                var c1_practice   = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined1_practice' && x.rt >= 400 && x.rt < 10000; });
+                var c1_test       = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined1_test'     && x.rt >= 400 && x.rt < 10000; });
+                var c2_practice   = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined2_practice' && x.rt >= 400 && x.rt < 10000; });
+                var c2_test       = jsPsych.data.get().filterCustom(function(x){ return x.iat_type === 'combined2_test'     && x.rt >= 400 && x.rt < 10000; });
+                var c1_pool       = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_practice' || x.iat_type === 'combined1_test')     && x.rt >= 400 && x.rt < 10000; });
+                var c2_pool       = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined2_practice' || x.iat_type === 'combined2_test')     && x.rt >= 400 && x.rt < 10000; });
+                var practice_pool = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_practice' || x.iat_type === 'combined2_practice') && x.rt >= 400 && x.rt < 10000; });
+                var test_pool     = jsPsych.data.get().filterCustom(function(x){ return (x.iat_type === 'combined1_test'     || x.iat_type === 'combined2_test')     && x.rt >= 400 && x.rt < 10000; });
+
+                var mean_c1 = c1_pool.select('rt').mean();
+                var mean_c2 = c2_pool.select('rt').mean();
+                var sd1 = practice_pool.select('rt').sd();
+                var sd2 = test_pool.select('rt').sd();
+                var d1 = (c2_practice.select('rt').mean() - c1_practice.select('rt').mean()) / sd1;
+                var d2 = (c2_test.select('rt').mean()     - c1_test.select('rt').mean())     / sd2;
+                var d = (d1 + d2) / 2;
+                data.iat_type = 'iat_summary';
+                data.d_score = d;
+                data.mean_c1 = mean_c1;
+                data.mean_c2 = mean_c2;
               """,
               "choices" => ["Finish"],
               "button_layout" => "grid",

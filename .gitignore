@@ -45,3 +45,7 @@ npm-debug.log
 /loadtest/fixtures/
 
 .DS_Store
+
+# Ignore local file upload
+# This is used for any file upload related features during dev and test
+/priv/static/uploads/

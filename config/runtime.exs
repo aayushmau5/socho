@@ -16,6 +16,8 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
+config :socho, :app_label, System.get_env("APP_LABEL", "Socho")
+
 if System.get_env("PHX_SERVER") do
   config :socho, SochoWeb.Endpoint, server: true
 end
@@ -79,6 +81,17 @@ if config_env() == :prod do
     adapter: Socho.SMS.Adapters.Msg91,
     auth_key: sms_auth_key
 
+  # S3 file uploads — set S3_BUCKET to enable; falls back to local storage otherwise
+  if s3_bucket = System.get_env("S3_BUCKET") do
+    config :socho, :uploads_backend, :s3
+    config :socho, :s3_bucket, s3_bucket
+
+    config :ex_aws,
+      access_key_id: [{:system, "AWS_ACCESS_KEY_ID"}, :instance_role],
+      secret_access_key: [{:system, "AWS_SECRET_ACCESS_KEY"}, :instance_role],
+      region: "ap-south-1"
+  end
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key
@@ -128,4 +141,6 @@ if config_env() == :prod do
   #     config :swoosh, :api_client, Swoosh.ApiClient.Req
   #
   # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+
+  config :socho, Socho.Mailer, adapter: Swoosh.Adapters.ExAwsAmazonSES
 end

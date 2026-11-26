@@ -68,6 +68,11 @@ defmodule Socho.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:nimble_csv, "~> 1.2"},
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:sweet_xml, "~> 0.7"},
+      {:hackney, "~> 4.0"},
+      {:gen_smtp, "~> 1.0"},
       {:stampede, "~> 1.4", only: :dev}
     ]
   end
