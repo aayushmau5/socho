@@ -39,3 +39,9 @@ npm-debug.log
 /priv/static/vendor/jspsych/
 
 /scripts/files/**
+
+# Load test accounts and fixtures, written by loadtest/seed.exs.
+/loadtest/accounts.csv
+/loadtest/fixtures/
+
+.DS_Store
