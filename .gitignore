@@ -40,8 +40,7 @@ npm-debug.log
 
 /scripts/files/**
 
-# Load test accounts and fixtures, written by loadtest/seed.exs.
-/loadtest/accounts.csv
+# Load test fixtures, written by loadtest/seed.exs.
 /loadtest/fixtures/
 
 .DS_Store

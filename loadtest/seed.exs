@@ -8,13 +8,10 @@ defmodule Socho.Load.Seed do
     * a "Load Test" client
     * two published IAT studies: one public, one for the client
     * SEED_ACCOUNTS participant accounts for the client (default 5000)
-    * SEED_BACKGROUND_SUBMISSIONS submissions per study (default 2000), so the
-      tables are not empty during the test
 
-  It writes the submission every participant posts to
-  loadtest/fixtures/iat_submission.json, and the accounts to
-  loadtest/accounts.csv. Randomness is seeded, so the fixture is the same on
-  every run.
+  It writes two files to loadtest/fixtures/: iat_submission.json, the
+  submission every participant posts, and accounts.csv. Randomness is seeded,
+  so the submission is the same on every run.
 
   It ends by printing the env vars loadtest/participant.exs needs.
   """
@@ -24,17 +21,17 @@ defmodule Socho.Load.Seed do
   alias Socho.{Clients, Repo, Studies}
   alias Socho.Accounts.User
   alias Socho.Clients.Client
-  alias Socho.Studies.{Study, Submission, Templates}
+  alias Socho.Studies.{Study, Templates}
 
-  @fixture_path Path.join(__DIR__, "fixtures/iat_submission.json")
-  @accounts_path Path.join(__DIR__, "accounts.csv")
+  @fixtures_dir Path.join(__DIR__, "fixtures")
+  @fixture_path Path.join(@fixtures_dir, "iat_submission.json")
+  @accounts_path Path.join(@fixtures_dir, "accounts.csv")
   @password "loadtest-password"
   @email_domain "loadtest.socho.local"
   @client_name "Load Test"
   @title_prefix "Load Test: "
   @random_seed {31, 31, 31}
   @insert_batch_size 1_000
-  @submission_batch_size 250
   @error_rate 0.07
   @reaction_time_sd_ms 180
   @min_reaction_time_ms 300
@@ -42,7 +39,7 @@ defmodule Socho.Load.Seed do
   @gap_between_trials_ms 250
   @plugin_version "2.0.0"
 
-  defstruct [:database, :accounts_count, :background_submissions_count, :seeded_at]
+  defstruct [:database, :accounts_count, :seeded_at]
 
   def run do
     :rand.seed(:exsss, @random_seed)
@@ -57,15 +54,12 @@ defmodule Socho.Load.Seed do
            }),
          {:ok, client_study} <- create_published_study("IAT (client)", client.id, nodes, %{}) do
       submission = build_submission(nodes)
+      File.mkdir_p!(@fixtures_dir)
       File.write!(@fixture_path, Jason.encode!(submission, pretty: true))
 
       emails = Enum.map(1..config.accounts_count, &account_email/1)
       insert_accounts!(config, emails, client)
       write_accounts_csv!(emails)
-
-      for study <- [public_study, client_study] do
-        insert_background_submissions!(config, study, submission)
-      end
 
       print_summary(config, submission, public_study, client_study)
     else
@@ -80,8 +74,7 @@ defmodule Socho.Load.Seed do
       {:ok,
        %__MODULE__{
          database: database,
-         accounts_count: env_integer("SEED_ACCOUNTS", 5_000),
-         background_submissions_count: env_integer("SEED_BACKGROUND_SUBMISSIONS", 2_000),
+         accounts_count: System.get_env("SEED_ACCOUNTS", "5000") |> String.to_integer(),
          seeded_at: DateTime.utc_now(:second)
        }}
     else
@@ -278,43 +271,15 @@ defmodule Socho.Load.Seed do
     File.write!(@accounts_path, ["email,password\n" | rows])
   end
 
-  defp insert_background_submissions!(%__MODULE__{} = config, %Study{} = study, submission) do
-    data = %{"trials" => submission}
-
-    1..config.background_submissions_count
-    |> Stream.map(fn number ->
-      %{
-        study_id: study.id,
-        data: data,
-        remote_ip: fake_ip(number),
-        inserted_at: config.seeded_at,
-        updated_at: config.seeded_at
-      }
-    end)
-    |> Stream.chunk_every(@submission_batch_size)
-    |> Enum.each(&Repo.insert_all(Submission, &1))
-  end
-
-  defp fake_ip(number) do
-    "10.#{div(number, 65_536)}.#{rem(div(number, 256), 256)}.#{rem(number, 256)}"
-  end
-
   defp print_summary(%__MODULE__{} = config, submission, public_study, client_study) do
     IO.puts("""
     Seeded #{config.database}: #{config.accounts_count} accounts, \
-    #{config.background_submissions_count} background submissions per study, \
     #{length(submission)} trial rows per submission.
 
     export SOCHO_PUBLIC_STUDY_ID=#{public_study.id}
     export SOCHO_CLIENT_STUDY_ID=#{client_study.id}
-    export SOCHO_ACCOUNTS=loadtest/accounts.csv
+    export SOCHO_ACCOUNTS=loadtest/fixtures/accounts.csv
     """)
-  end
-
-  defp env_integer(name, default) do
-    name
-    |> System.get_env(Integer.to_string(default))
-    |> String.to_integer()
   end
 
   defp failure_message({:not_loadtest_database, database}),
