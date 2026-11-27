@@ -13,19 +13,19 @@ defmodule Socho.Load.Participant do
   A failed step stops the iteration and raises, so Stampede counts it under
   "iteration.errors" and prints the reason.
 
-  Run loadtest/seed.exs first, then set:
+  Run Socho.LoadTest.Seed first, then set:
 
     * SOCHO_PUBLIC_STUDY_ID, SOCHO_CLIENT_STUDY_ID, SOCHO_ACCOUNTS (printed by the seed)
-    * SOCHO_BASE_URL (default http://localhost:4000)
+    * SOCHO_BASE_URL, the server to test
     * LOGGED_IN_SHARE (default 0.5)
     * SOCHO_THINK_SECONDS, how long taking a study takes (default 30-90)
   """
 
   use Stampede.Scenario
 
+  alias Socho.LoadTest.{Accounts, IAT}
   alias Stampede.{HTTP, LiveView, VU}
 
-  @fixture_path Path.join(__DIR__, "fixtures/iat_submission.json")
   @gzip {"accept-encoding", "gzip"}
   @typing_ms 3_000..8_000
   @dashboard_view_ms 1_000..3_000
@@ -37,7 +37,7 @@ defmodule Socho.Load.Participant do
     :logged_in_share,
     :study_duration_ms,
     :submission,
-    :accounts,
+    :accounts_count,
     :accounts_used
   ]
 
@@ -78,13 +78,13 @@ defmodule Socho.Load.Participant do
   def setup(_opts) do
     # This struct is passed verbatim to run/1 below
     %__MODULE__{
-      base_url: System.get_env("SOCHO_BASE_URL", "http://localhost:4000"),
+      base_url: System.fetch_env!("SOCHO_BASE_URL"),
       public_study_id: System.fetch_env!("SOCHO_PUBLIC_STUDY_ID"),
       client_study_id: System.fetch_env!("SOCHO_CLIENT_STUDY_ID"),
       logged_in_share: parse_share(System.get_env("LOGGED_IN_SHARE", "0.5")),
       study_duration_ms: parse_seconds_range(System.get_env("SOCHO_THINK_SECONDS", "30-90")),
-      submission: @fixture_path |> File.read!() |> Jason.decode!(),
-      accounts: System.fetch_env!("SOCHO_ACCOUNTS") |> load_accounts() |> List.to_tuple(),
+      submission: IAT.submission(),
+      accounts_count: System.fetch_env!("SOCHO_ACCOUNTS") |> String.to_integer(),
       accounts_used: :atomics.new(1, [])
     }
   end
@@ -119,15 +119,15 @@ defmodule Socho.Load.Participant do
   end
 
   defp sign_in_and_take_study(%__MODULE__{} = config) do
-    with {:ok, account} <- get_account(config),
-         :ok <- sign_in(config, account),
+    with {:ok, email} <- get_account_email(config),
+         :ok <- sign_in(config, email),
          :ok <- view_dashboard(config) do
       take_study(config, config.client_study_id)
     end
   end
 
-  defp sign_in(%__MODULE__{} = config, account) do
-    credentials = %{"email" => account.email, "password" => account.password}
+  defp sign_in(%__MODULE__{} = config, email) do
+    credentials = %{"email" => email, "password" => Accounts.password()}
 
     # /dashboard redirects to log in.
     # The LiveView submit doesn't log in: it tells the browser to POST the form.
@@ -240,18 +240,18 @@ defmodule Socho.Load.Participant do
   defp pause(range_ms), do: Process.sleep(Enum.random(range_ms))
 
   # Shared :atomics counter, so no two VUs get the same account
-  defp get_account(%__MODULE__{accounts: accounts, accounts_used: accounts_used}) do
-    index = :atomics.add_get(accounts_used, 1, 1)
+  defp get_account_email(%__MODULE__{} = config) do
+    number = :atomics.add_get(config.accounts_used, 1, 1)
 
-    if index <= tuple_size(accounts) do
-      {:ok, elem(accounts, index - 1)}
+    if number <= config.accounts_count do
+      {:ok, Accounts.email(number)}
     else
       {:error, :out_of_accounts}
     end
   end
 
   defp failure_message(:out_of_accounts),
-    do: "used every seeded account: reseed with a higher SEED_ACCOUNTS"
+    do: "used every seeded account: reseed with more accounts and raise SOCHO_ACCOUNTS"
 
   defp failure_message(:already_submitted),
     do: "account already submitted: reseed before each run"
@@ -293,20 +293,6 @@ defmodule Socho.Load.Participant do
       {_name, value} -> value
       nil -> nil
     end
-  end
-
-  defp load_accounts(path) do
-    path
-    |> File.stream!()
-    |> Stream.drop(1)
-    |> Stream.map(&String.trim/1)
-    |> Stream.reject(&(&1 == ""))
-    |> Enum.map(&parse_account/1)
-  end
-
-  defp parse_account(line) do
-    [email, password] = String.split(line, ",", parts: 2)
-    %{email: email, password: password}
   end
 
   defp parse_share(value) do
