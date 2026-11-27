@@ -89,19 +89,15 @@ defmodule Socho.Load.Participant do
     }
   end
 
+  # Every VU runs this over and over. One run is one visitor:
+  #  1. Clear cookies, so every run is a new visitor
+  #  2. Signed in only (LOGGED_IN_SHARE of runs): get an account, log in, view the dashboard
+  #  3. Open the study page: client study if signed in, public otherwise
+  #  4. Load its JS and CSS
+  #  5. Pause while the study runs in the browser, with no server work
+  #  6. Submit the results
+  # The first failed step raises, counted under "iteration.errors"
   @impl true
-  # Every virtual users run this function over and over
-  #
-  # There are two types of VUs: anonymous & users with account.
-  #
-  # The follow roughly looks like:
-  #  1. (If user has account) Get a seeded account
-  #  2. (If user has account) Visit /dashboard, user not logged in, redirected to /login
-  #  3. (If user has account) Using a seeded account credentials, log in(POST login)
-  #  4. Open a study URL, parse body
-  #  5. Load CSS/JS assets
-  #  6. Pause x seconds (configured) to simulate a study. Study happens in-browser without any server involvement.
-  #  7. Submit study result
   def run(%VU{data: %__MODULE__{} = config}) do
     HTTP.clear_cookies()
 
@@ -133,6 +129,9 @@ defmodule Socho.Load.Participant do
   defp sign_in(%__MODULE__{} = config, account) do
     credentials = %{"email" => account.email, "password" => account.password}
 
+    # /dashboard redirects to log in.
+    # The LiveView submit doesn't log in: it tells the browser to POST the form.
+    # Stampede runs no JS, so we send that POST ourselves.
     with {:ok, login} <- LiveView.connect(config.base_url <> "/dashboard", cookies: true),
          :ok <- pause(@typing_ms),
          {:ok, _reply} <- LiveView.submit(login, "submit_password", %{"user" => credentials}),
@@ -178,6 +177,8 @@ defmodule Socho.Load.Participant do
     end
   end
 
+  # A real visit downloads the page's JS and CSS from Phoenix, which adds load.
+  # Stampede isn't a browser, so we fetch the page's assets ourselves
   defp load_assets(%__MODULE__{} = config, html) do
     html
     |> asset_paths()
@@ -195,6 +196,7 @@ defmodule Socho.Load.Participant do
     end
   end
 
+  # Only {"status": "ok"} counts as saved
   defp submit_results(%__MODULE__{} = config, study_url, csrf_token) do
     with {:ok, response} <-
            post(study_url <> "/user-data",
@@ -209,8 +211,8 @@ defmodule Socho.Load.Participant do
   end
 
   # Stampede 1.4.0 returns :closed when it reuses a keep-alive connection the
-  # server closed while idle, where a browser opens a new one. Fixed upstream
-  # in mandar1045/stampede#7, unreleased as of 1.4.0.
+  # server closed while idle, where a browser opens a new one.
+  # Fixed upstream. unreleased as of 1.4.0.
   defp post(url, opts) do
     case HTTP.post(url, opts) do
       {:error, %Mint.TransportError{reason: :closed}} -> HTTP.post(url, opts)
@@ -218,6 +220,7 @@ defmodule Socho.Load.Participant do
     end
   end
 
+  # Record the check, and turn a failure into an error
   defp expect(check_name, response, passed?) do
     if Stampede.check(check_name, passed?) do
       :ok
@@ -228,6 +231,7 @@ defmodule Socho.Load.Participant do
 
   defp pause(range_ms), do: Process.sleep(Enum.random(range_ms))
 
+  # Shared :atomics counter, so no two VUs get the same account
   defp get_account(%__MODULE__{accounts: accounts, accounts_used: accounts_used}) do
     index = :atomics.add_get(accounts_used, 1, 1)
 
@@ -246,6 +250,7 @@ defmodule Socho.Load.Participant do
 
   defp failure_message(reason), do: "participant failed: #{inspect(reason)}"
 
+  # Local .js and .css paths only
   defp asset_paths(html) do
     ~r/(?:src|href)="(\/[^"]+\.(?:js|css))"/
     |> Regex.scan(html, capture: :all_but_first)
@@ -253,6 +258,7 @@ defmodule Socho.Load.Participant do
     |> Enum.uniq()
   end
 
+  # Stampede doesn't gunzip responses
   defp body(response) do
     case header(response, "content-encoding") do
       "gzip" -> :zlib.gunzip(response.body)
@@ -297,6 +303,7 @@ defmodule Socho.Load.Participant do
     share
   end
 
+  # "30-90" -> 30_000..90_000
   defp parse_seconds_range(value) do
     [low, high] = value |> String.split("-") |> Enum.map(&String.to_integer/1)
     (low * 1_000)..(high * 1_000)

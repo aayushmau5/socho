@@ -41,6 +41,16 @@ defmodule Socho.Load.Seed do
 
   defstruct [:database, :accounts_count, :seeded_at]
 
+  # Steps:
+  #  1. Seed randomness, so the fake submission is the same every run
+  #  2. Build the IAT trial tree from the "iat" template
+  #  3. Refuse unless the database name contains "loadtest"
+  #  4. Delete the previous seed's users and studies
+  #  5. Find or create the "Load Test" client
+  #  6. Create two published IAT studies: public and client
+  #  7. Write the fake submission to fixtures/iat_submission.json
+  #  8. Insert participant accounts and write fixtures/accounts.csv
+  #  9. Print the env vars participant.exs needs
   def run do
     :rand.seed(:exsss, @random_seed)
     nodes = iat_nodes()
@@ -50,6 +60,7 @@ defmodule Socho.Load.Seed do
          {:ok, client} <- find_or_create_client(),
          {:ok, public_study} <-
            create_published_study("IAT (public)", nil, nodes, %{
+             # every VU submits from the same IP, 127.0.0.1
              allow_multiple_public_submissions: true
            }),
          {:ok, client_study} <- create_published_study("IAT (client)", client.id, nodes, %{}) do
@@ -70,6 +81,7 @@ defmodule Socho.Load.Seed do
   defp load_config do
     database = current_database()
 
+    # Refuse any database without "loadtest" in its name
     if String.contains?(database, "loadtest") do
       {:ok,
        %__MODULE__{
@@ -87,6 +99,7 @@ defmodule Socho.Load.Seed do
     database
   end
 
+  # Seeded rows only. Deleting a study also deletes its trials and submissions
   defp delete_previous_seed do
     Repo.delete_all(from u in User, where: like(u.email, ^"%@#{@email_domain}"))
     Repo.delete_all(from s in Study, where: like(s.title, ^"#{@title_prefix}%"))
@@ -100,6 +113,7 @@ defmodule Socho.Load.Seed do
     end
   end
 
+  # New studies start as drafts, so publish them
   defp create_published_study(title, client_id, nodes, attrs) do
     with {:ok, study} <-
            Studies.create_study_with_trials(@title_prefix <> title, client_id, nodes) do
@@ -107,6 +121,7 @@ defmodule Socho.Load.Seed do
     end
   end
 
+  # Tree: preload, instructions, a group of versions, results
   defp iat_nodes do
     iat = Templates.get("iat")
     defaults = Map.new(iat.variables, &{&1.key, &1.default})
@@ -127,6 +142,7 @@ defmodule Socho.Load.Seed do
     Enum.map_join(1..5, "\n", &"https://picsum.photos/seed/#{name}#{&1}/300")
   end
 
+  # Fake the rows jsPsych posts when a participant finishes the IAT
   defp build_submission(nodes) do
     [_preload, _instructions, versions, _results] = nodes
     iat_trials = Enum.flat_map(version_aa(versions), &trials_for/1)
@@ -136,10 +152,12 @@ defmodule Socho.Load.Seed do
     |> Kernel.++([iat_summary()])
   end
 
+  # A participant sees one version, so take the first
   defp version_aa(versions) do
     Enum.take(versions.children, hd(versions.config["group_sizes"]))
   end
 
+  # IAT block: one row per stimulus, shuffled, repeated
   defp trials_for(%{node_type: "timeline", config: config}) do
     iat_type = config["data"]["iat_type"]
 
@@ -148,6 +166,7 @@ defmodule Socho.Load.Seed do
     end
   end
 
+  # Instruction screen: one row
   defp trials_for(%{plugin: "html-button-response", config: config}) do
     [
       %{
@@ -159,6 +178,7 @@ defmodule Socho.Load.Seed do
     ]
   end
 
+  # One IAT answer. 7% of answers (@error_rate) press the wrong key
   defp iat_trial(variable, iat_type) do
     expected = expected_key(variable["stim_key_association"])
     correct? = :rand.uniform() > @error_rate
@@ -179,6 +199,7 @@ defmodule Socho.Load.Seed do
   defp other_key("e"), do: "i"
   defp other_key("i"), do: "e"
 
+  # Bell curve around the block's mean, kept within 300ms-3s
   defp reaction_time(iat_type) do
     (mean_reaction_time(iat_type) + :rand.normal() * @reaction_time_sd_ms)
     |> round()
@@ -190,6 +211,7 @@ defmodule Socho.Load.Seed do
   defp mean_reaction_time("combined2" <> _block), do: 900
   defp mean_reaction_time(_iat_type), do: 700
 
+  # Fixed rows for the screens around the IAT blocks
   defp preload_trial do
     %{
       "trial_type" => "preload",
@@ -219,10 +241,12 @@ defmodule Socho.Load.Seed do
     }
   end
 
+  # Hardcoded scores: they don't match the fake trials
   defp iat_summary do
     %{"iat_type" => "iat_summary", "d_score" => 0.42, "mean_c1" => 771.98, "mean_c2" => 932.94}
   end
 
+  # Add trial_index and a running time_elapsed, like jsPsych
   defp add_timing(trials) do
     {timed_trials, _elapsed_ms} =
       trials
@@ -242,10 +266,12 @@ defmodule Socho.Load.Seed do
     timed_trials
   end
 
+  # 1 -> "lt-000001@loadtest.socho.local"
   defp account_email(number) do
     "lt-#{String.pad_leading(Integer.to_string(number), 6, "0")}@#{@email_domain}"
   end
 
+  # One shared password, hashed once: bcrypt is slow
   defp insert_accounts!(%__MODULE__{seeded_at: seeded_at}, emails, %Client{} = client) do
     hashed_password = Bcrypt.hash_pwd_salt(@password)
 
@@ -266,6 +292,7 @@ defmodule Socho.Load.Seed do
     |> Enum.each(&Repo.insert_all(User, &1))
   end
 
+  # We signs in with these accounts during load test
   defp write_accounts_csv!(emails) do
     rows = Enum.map(emails, &"#{&1},#{@password}\n")
     File.write!(@accounts_path, ["email,password\n" | rows])
