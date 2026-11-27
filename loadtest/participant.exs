@@ -205,10 +205,18 @@ defmodule Socho.Load.Participant do
              metric: "study.submit",
              json: %{data: config.submission}
            ) do
-      saved? = response.status == 200 and submit_status(response) == "ok"
-      expect("submit saved", response, saved?)
+      status = submit_status(response)
+      Stampede.check("submit saved", response.status == 200 and status == "ok")
+      submit_result(response, status)
     end
   end
+
+  defp submit_result(%{status: 200}, "ok"), do: :ok
+  # The account was used by an earlier run
+  defp submit_result(_response, "already_submitted"), do: {:error, :already_submitted}
+
+  defp submit_result(response, _status),
+    do: {:error, {:check_failed, "submit saved", response.status}}
 
   # Stampede 1.4.0 returns :closed when it reuses a keep-alive connection the
   # server closed while idle, where a browser opens a new one.
@@ -244,6 +252,9 @@ defmodule Socho.Load.Participant do
 
   defp failure_message(:out_of_accounts),
     do: "used every seeded account: reseed with a higher SEED_ACCOUNTS"
+
+  defp failure_message(:already_submitted),
+    do: "account already submitted: reseed before each run"
 
   defp failure_message({:check_failed, check_name, status}),
     do: "check #{inspect(check_name)} failed with status #{status}"
